@@ -1,0 +1,6 @@
+{
+  "name": "Ultron AI",
+  "description": "Cinematic autonomous AI companion with liquid-glass interface for research, coding, voice cognition, and document analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
