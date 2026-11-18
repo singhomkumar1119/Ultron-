@@ -12,6 +12,14 @@ import { SettingsModal } from './components/SettingsModal';
 import { UltronDisplayProjection } from './components/UltronDisplayProjection';
 import { Ultron3DCoreView } from './components/Ultron3DCoreView';
 import { UltronSystemVitalsPanel } from './components/UltronSystemVitalsPanel';
+import {
+  auth,
+  onAuthStateChanged,
+  signInWithGoogle,
+  signOutUser,
+  syncUserProfileToFirestore,
+  type User,
+} from './lib/firebase';
 
 const SESSION_INTRO_KEY = 'ultron_intro_seen_session_v2';
 
@@ -33,14 +41,45 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-4-hydrogen');
   const [bloomIntensity, setBloomIntensity] = useState<number>(0.85);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Modals & Panels
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [pendingCodingTask, setPendingCodingTask] = useState<string | undefined>(undefined);
+
+  // Listen to Firebase Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user) {
+        syncUserProfileToFirestore(user, theme, selectedModel).catch(() => {});
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      const user = await signInWithGoogle();
+      setCurrentUser(user);
+      await syncUserProfileToFirestore(user, theme, selectedModel);
+    } catch {
+      // Popup closed by user or blocked in headless preview
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+      setCurrentUser(null);
+    } catch {
+      // Ignore sign out error
+    }
+  };
 
   // Sync dark class on document element
   useEffect(() => {
@@ -138,6 +177,9 @@ export default function App() {
         onToggleSound={() => setSoundEnabled(!soundEnabled)}
         theme={theme}
         reducedMotion={reducedMotion}
+        currentUser={currentUser}
+        onSignIn={handleSignIn}
+        onSignOut={handleSignOut}
       />
 
       {/* Restrained Atmospheric Background Depth */}
@@ -162,10 +204,15 @@ export default function App() {
             onBranchToCoding={handleBranchToCoding}
             onOpen3DStudio={() => setCurrentMode('3d-core')}
             onReplayIntro={handleReplayIntro}
+            onOpenVoiceMode={() => setIsVoiceOpen(true)}
             newSessionSignal={newSessionSignal}
             theme={theme}
             bloomIntensity={bloomIntensity}
             reducedMotion={reducedMotion}
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+            currentUser={currentUser}
+            onSignIn={handleSignIn}
           />
         )}
 

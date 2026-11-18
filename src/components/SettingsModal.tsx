@@ -49,22 +49,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const models = [
     {
-      id: 'gemini-2.5-flash',
-      name: 'Gemini 2.5 Flash',
-      tag: 'Fast Inference',
-      desc: 'Optimized for high-speed streaming synthesis and instant responses.',
+      id: 'gemini-4-hydrogen',
+      name: 'Gemini 4 Hydrogen',
+      tag: 'General · Free Key',
+      desc: 'Default multimodal intelligence with live Google Search and Google Maps grounding.',
     },
     {
-      id: 'gemini-2.5-pro',
-      name: 'Gemini 2.5 Pro',
+      id: 'gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash Lite',
+      tag: 'High Speed · Free Key',
+      desc: 'Ultra-low latency streaming synthesis optimized for high-frequency interactive chat.',
+    },
+    {
+      id: 'gemini-4-argon',
+      name: 'Gemini 4 Argon',
+      tag: 'Complex Interactive',
+      desc: 'Advanced multi-turn coding and interactive system design (with Free-Key fallback).',
+    },
+    {
+      id: 'gemini-4-carbon',
+      name: 'Gemini 4 Carbon',
       tag: 'Deep Reasoning',
-      desc: 'Multimodal analysis, mathematical modeling, and multi-file code planning.',
-    },
-    {
-      id: 'ultron-neural-v4',
-      name: 'Ultron Neural Core v4',
-      tag: 'Autonomous',
-      desc: 'Specialized autonomous engineer with automatic diff rollback and test harnesses.',
+      desc: 'Maximum architectural reasoning depth and mathematical analysis (with Free-Key fallback).',
     },
   ];
 

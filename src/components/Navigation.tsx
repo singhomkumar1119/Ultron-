@@ -7,6 +7,9 @@ import {
   FolderKanban,
   Plus,
   Settings,
+  LogIn,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 import { UltronLogoMark } from './UltronLogoMark';
 import {
@@ -14,6 +17,7 @@ import {
   getBreathingPulseConfig,
   type UltronTheme,
 } from '../utils/ultronLogic';
+import type { User } from '../lib/firebase';
 
 export type AppMode = 'chat' | '3d-core' | 'coding' | 'voice' | 'docs' | 'projects';
 
@@ -28,6 +32,9 @@ interface NavigationProps {
   theme?: UltronTheme;
   isListening?: boolean;
   reducedMotion?: boolean;
+  currentUser?: User | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -38,6 +45,9 @@ export const Navigation: React.FC<NavigationProps> = ({
   theme = 'amber',
   isListening = true,
   reducedMotion = false,
+  currentUser,
+  onSignIn,
+  onSignOut,
 }) => {
   const statusTheme = getSystemStatusThemeConfig(theme);
   const emblemBreathe = getBreathingPulseConfig('emblem', 0, reducedMotion);
@@ -102,7 +112,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             })}
           </nav>
 
-          {/* Zone 3: Top-Right System Online Pulsing Indicator, New-Session Action & Settings */}
+          {/* Zone 3: Top-Right System Online Pulsing Indicator, Auth, New-Session Action & Settings */}
           <div className="flex items-center gap-2.5 shrink-0">
             {/* Subtle 'System Online' Pulsing Indicator (Theme-Responsive, Active & Listening Cue) */}
             <button
@@ -147,6 +157,41 @@ export const Navigation: React.FC<NavigationProps> = ({
                 </span>
               )}
             </button>
+
+            {currentUser ? (
+              <div
+                data-testid="firebase-user-badge"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-slate-200"
+              >
+                <UserIcon className={`w-3.5 h-3.5 ${statusTheme.accentIconClass}`} />
+                <span className="hidden xl:inline max-w-[110px] truncate">
+                  {currentUser.displayName || currentUser.email?.split('@')[0] || 'Operator'}
+                </span>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    aria-label="Sign Out"
+                    title="Sign out of Firebase"
+                    className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              onSignIn && (
+                <button
+                  type="button"
+                  onClick={onSignIn}
+                  data-testid="google-signin-button"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] text-slate-200 border border-white/10 text-xs font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                >
+                  <LogIn className={`w-3.5 h-3.5 ${statusTheme.accentIconClass}`} />
+                  <span className="hidden sm:inline">Sign In</span>
+                </button>
+              )
+            )}
 
             <button
               type="button"

@@ -157,9 +157,9 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
             }
           : undefined
       }
-      className={`fixed z-30 w-64 select-none rounded-2xl bg-[#070910]/90 backdrop-blur-xl border border-white/[0.09] shadow-[0_18px_42px_-10px_rgba(0,0,0,0.75)] text-slate-200 transition-shadow ${
-        position ? '' : 'bottom-16 md:bottom-5 right-4 md:right-6'
-      } ${isDragging ? 'ring-1 ring-amber-400/50 cursor-grabbing' : breatheCfg.className}`}
+      className={`fixed z-30 w-60 select-none rounded-2xl bg-[#070910]/90 backdrop-blur-xl border border-white/[0.09] shadow-[0_18px_42px_-10px_rgba(0,0,0,0.75)] text-slate-200 transition-shadow ${
+        position ? '' : 'top-[104px] right-4 md:right-5'
+      } ${isDragging ? 'ring-1 ring-amber-400/50 cursor-grabbing' : ''}`}
     >
       {/* Draggable Header Bar */}
       <div
@@ -172,7 +172,9 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
       >
         <div className="flex items-center gap-2 min-w-0">
           <GripHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-          <Activity className={`w-3.5 h-3.5 shrink-0 ${statusTheme.accentIconClass}`} />
+          <Activity
+            className={`w-3.5 h-3.5 shrink-0 ${statusTheme.accentIconClass} ${breatheCfg.className}`}
+          />
           <span className="text-[11px] font-semibold tracking-wide text-slate-100 truncate">
             System Vitals
           </span>

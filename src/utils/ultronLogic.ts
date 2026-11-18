@@ -211,6 +211,22 @@ export function calculateNeuralActivity(state: VoiceState, time: number) {
   return { pulseSpeed, ringRotationSpeed, dendriteBrightness, coreScale };
 }
 
+export interface GroundingSourceItem {
+  type: 'web' | 'maps';
+  title: string;
+  uri: string;
+  reviewSnippets?: string[];
+}
+
+export type UltronContextMode =
+  | 'Deep Research'
+  | 'Code Architect'
+  | 'Executive Strategy'
+  | 'System Analysis'
+  | 'Search Grounding'
+  | 'Maps Grounding'
+  | 'Voice Transcript';
+
 export interface StoredChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -218,13 +234,17 @@ export interface StoredChatMessage {
   thinkingSteps?: string[];
   timestamp: string;
   contextMode?: string;
+  model?: string;
+  groundingSources?: GroundingSourceItem[];
 }
+
+export type ChatMessage = StoredChatMessage;
 
 export interface ChatSessionItem {
   id: string;
   title: string;
   updatedAt: string;
-  contextMode: 'Deep Research' | 'Code Architect' | 'Executive Strategy';
+  contextMode: UltronContextMode;
   messages: StoredChatMessage[];
 }
 
@@ -233,7 +253,7 @@ export interface ChatSessionItem {
  */
 export function createChatSession(
   title: string = 'New Neural Directive',
-  contextMode: 'Deep Research' | 'Code Architect' | 'Executive Strategy' = 'Deep Research',
+  contextMode: UltronContextMode = 'Deep Research',
   customId?: string
 ): ChatSessionItem {
   return {
