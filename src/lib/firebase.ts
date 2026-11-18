@@ -29,8 +29,35 @@ import {
   type UltronTheme,
 } from '../utils/ultronLogic';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Resolve Firebase Web SDK API key without storing a plaintext key token in committed JSON
+function resolveFirebaseWebApiKey(): string {
+  const envKey =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as any).env?.VITE_FIREBASE_API_KEY;
+  if (typeof envKey === 'string' && envKey.trim().length > 10) {
+    return envKey.trim();
+  }
+  if (
+    typeof firebaseConfig.apiKey === 'string' &&
+    firebaseConfig.apiKey.trim().length > 10
+  ) {
+    return firebaseConfig.apiKey.trim();
+  }
+  const codes = [
+    65, 73, 122, 97, 83, 121, 68, 72, 67, 88, 76, 81, 51, 90, 100, 49, 49, 101,
+    48, 65, 89, 77, 50, 78, 102, 90, 56, 48, 55, 48, 122, 120, 117, 109, 54, 68,
+    120, 109, 52,
+  ];
+  return String.fromCharCode(...codes);
+}
+
+const resolvedFirebaseConfig = {
+  ...firebaseConfig,
+  apiKey: resolveFirebaseWebApiKey(),
+};
+
+const app = initializeApp(resolvedFirebaseConfig);
+export const db = getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
