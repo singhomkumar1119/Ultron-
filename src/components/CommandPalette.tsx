@@ -173,21 +173,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const renderIcon = (name: string) => {
     switch (name) {
       case 'MessageSquare':
-        return <MessageSquare className="w-4 h-4 text-amber-400" />;
+        return <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'Code2':
-        return <Code2 className="w-4 h-4 text-amber-400" />;
+        return <Code2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'Mic':
-        return <Mic className="w-4 h-4 text-amber-400" />;
+        return <Mic className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'FileText':
-        return <FileText className="w-4 h-4 text-amber-400" />;
+        return <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'FolderKanban':
-        return <FolderKanban className="w-4 h-4 text-amber-400" />;
+        return <FolderKanban className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'Palette':
-        return <Palette className="w-4 h-4 text-amber-400" />;
+        return <Palette className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'Settings':
-        return <Settings className="w-4 h-4 text-amber-400" />;
+        return <Settings className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       default:
-        return <Sparkles className="w-4 h-4 text-amber-400" />;
+        return <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
     }
   };
 
@@ -196,27 +196,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/70 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/55 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl glass-panel rounded-2xl border border-white/15 shadow-2xl overflow-hidden text-white"
+        className="w-full max-w-xl bg-white dark:bg-[#12151E] rounded-2xl border border-slate-200 dark:border-white/15 shadow-2xl overflow-hidden text-slate-900 dark:text-white"
       >
         {/* Search Input Bar */}
-        <div className="flex items-center px-4 py-3.5 border-b border-white/10 bg-white/[0.02]">
+        <div className="flex items-center px-4 py-3.5 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02]">
           <Search className="w-4 h-4 text-slate-400 mr-3" />
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search Ultron directives, modes, tools, and actions..."
+            placeholder="Search Ultron tools, modes, and settings..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            className="w-full bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none"
+            className="w-full bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
           />
-          <kbd className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-400 border border-white/10">
+          <kbd className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-white/10">
             ESC
           </kbd>
         </div>
@@ -224,8 +224,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* Command List */}
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filtered.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
-              No matching commands or actions located.
+            <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+              No matching commands found.
             </div>
           ) : (
             filtered.map((item, idx) => {
@@ -237,26 +237,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition-colors ${
                     isSelected
-                      ? 'bg-amber-500/20 text-white border border-amber-500/30'
-                      : 'text-slate-300 hover:bg-white/5'
+                      ? 'bg-indigo-50 dark:bg-indigo-500/20 text-slate-900 dark:text-white border border-indigo-200 dark:border-indigo-500/35'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-1.5 rounded-lg bg-white/5">{renderIcon(item.iconName)}</div>
+                    <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/5">
+                      {renderIcon(item.iconName)}
+                    </div>
                     <div>
-                      <p className="font-semibold text-slate-100">{item.title}</p>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100">
+                        {item.title}
+                      </p>
                       {item.description && (
-                        <p className="text-[11px] text-slate-400">{item.description}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {item.description}
+                        </p>
                       )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono uppercase text-slate-500">
+                    <span className="text-[10px] font-mono uppercase text-slate-400 dark:text-slate-500">
                       {item.category}
                     </span>
                     {item.shortcut && (
-                      <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                      <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10">
                         {item.shortcut}
                       </kbd>
                     )}
@@ -268,9 +274,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         {/* Footer Hint */}
-        <div className="px-4 py-2 border-t border-white/10 bg-white/[0.01] flex items-center justify-between text-[11px] text-slate-500 font-mono">
-          <span>Navigate with ↑↓, execute with ↵</span>
-          <span>Universal Command Bridge</span>
+        <div className="px-4 py-2 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.01] flex items-center justify-between text-[11px] text-slate-500 font-mono">
+          <span>Navigate with ↑↓, select with ↵</span>
+          <span>Quick Actions</span>
         </div>
       </div>
     </div>

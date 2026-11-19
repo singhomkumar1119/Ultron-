@@ -24,6 +24,11 @@ import {
   clampFloatingPosition,
   filterChatSessions,
   getSessionPreviewSnippet,
+  computeTypewriterRevealState,
+  getLiquidGlassAccentConfig,
+  getSettingsTabDefinitions,
+  resolveDarkMode,
+  parseFormattedMessageBlocks,
   type CommandItem,
 } from './ultronLogic';
 
@@ -302,6 +307,99 @@ test('filterChatSessions and getSessionPreviewSnippet filter and summarize chat 
   assert.ok(snippet.includes('Design a distributed token-bucket'));
 });
 
+test('computeTypewriterRevealState reveals text progressively and respects reducedMotion', () => {
+  const sample =
+    'Ultron Intelligence Synthesis\n\n1. Optical Links: Sub-picosecond routing across distributed nodes.\n2. Consensus: Deterministic state convergence.';
+
+  const startState = computeTypewriterRevealState(sample, 50, {
+    charsPerSecond: 100,
+    maxDurationMs: 3600,
+    reducedMotion: false,
+  });
+  assert.equal(startState.isComplete, false);
+  assert.ok(startState.revealedChars >= 1 && startState.revealedChars < sample.length);
+  assert.equal(startState.visibleText, sample.slice(0, startState.revealedChars));
+
+  const midState = computeTypewriterRevealState(sample, 600, {
+    charsPerSecond: 100,
+    maxDurationMs: 3600,
+    reducedMotion: false,
+  });
+  assert.ok(midState.revealedChars > startState.revealedChars);
+
+  const endState = computeTypewriterRevealState(sample, 5000, {
+    charsPerSecond: 100,
+    maxDurationMs: 3600,
+    reducedMotion: false,
+  });
+  assert.equal(endState.isComplete, true);
+  assert.equal(endState.visibleText, sample);
+  assert.equal(endState.progress, 1);
+
+  const reducedState = computeTypewriterRevealState(sample, 0, {
+    reducedMotion: true,
+  });
+  assert.equal(reducedState.isComplete, true);
+  assert.equal(reducedState.visibleText, sample);
+
+  const cyanAccent = getLiquidGlassAccentConfig('cyan');
+  const amberAccent = getLiquidGlassAccentConfig('amber');
+  assert.ok(cyanAccent.caretClass.includes('cyan'));
+  assert.ok(amberAccent.caretClass.includes('amber'));
+});
+
+test('getSettingsTabDefinitions summarizes integration state', () => {
+  const connectedTabs = getSettingsTabDefinitions(true);
+  assert.equal(connectedTabs[1].id, 'integrations');
+  assert.equal(connectedTabs[1].badgeText, 'Connected');
+
+  const readyTabs = getSettingsTabDefinitions(false);
+  assert.equal(readyTabs[1].badgeText, 'Ready');
+});
+
+test('resolveDarkMode and parseFormattedMessageBlocks handle light/dark/system, code blocks, tables, bullets, and numbered lists', () => {
+  assert.equal(resolveDarkMode('dark', false), true);
+  assert.equal(resolveDarkMode('light', true), false);
+  assert.equal(resolveDarkMode('system', true), true);
+  assert.equal(resolveDarkMode('system', false), false);
+
+  const indigo = getSystemStatusThemeConfig('indigo');
+  assert.ok(indigo.dotColorClass.includes('indigo'));
+
+  const sample = [
+    '## Architecture Plan',
+    '',
+    'Key goals:',
+    '- Reliability: Keep cluster state atomic',
+    '- Speed: Sub-millisecond cache',
+    '',
+    '1. First Step: Initialize rate limiter',
+    '',
+    '```ts',
+    'const limit = 100;',
+    '```',
+    '',
+    '| Layer | Latency |',
+    '| --- | --- |',
+    '| Cache | 0.4ms |',
+  ].join('\n');
+
+  const blocks = parseFormattedMessageBlocks(sample, false);
+  assert.equal(blocks[0].kind, 'heading');
+  assert.equal(blocks[1].kind, 'section');
+  assert.equal(blocks[2].kind, 'bullets');
+  assert.equal(blocks[3].kind, 'numbered');
+  assert.equal(blocks[4].kind, 'code');
+  if (blocks[4].kind === 'code') {
+    assert.equal(blocks[4].language, 'ts');
+    assert.equal(blocks[4].code, 'const limit = 100;');
+  }
+  assert.equal(blocks[5].kind, 'table');
+  if (blocks[5].kind === 'table') {
+    assert.deepEqual(blocks[5].headers, ['Layer', 'Latency']);
+    assert.deepEqual(blocks[5].rows, [['Cache', '0.4ms']]);
+  }
+});
 
 
 

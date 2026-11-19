@@ -1,252 +1,189 @@
 import React from 'react';
 import {
-  MessageSquare,
-  Box,
-  Code2,
-  FileText,
-  FolderKanban,
+  Menu,
+  PanelLeftOpen,
   Plus,
   Settings,
-  LogIn,
-  LogOut,
-  User as UserIcon,
+  Search,
+  Database,
+  Radio,
 } from 'lucide-react';
-import { UltronLogoMark } from './UltronLogoMark';
 import {
   getSystemStatusThemeConfig,
-  getBreathingPulseConfig,
   type UltronTheme,
 } from '../utils/ultronLogic';
-import type { User } from '../lib/firebase';
 
 export type AppMode = 'chat' | '3d-core' | 'coding' | 'voice' | 'docs' | 'projects';
 
 interface NavigationProps {
   currentMode: AppMode;
+  activeSessionTitle?: string;
+  isSidebarOpen: boolean;
+  onOpenDesktopSidebar: () => void;
+  onOpenMobileDrawer: () => void;
   onSelectMode: (mode: AppMode) => void;
   onNewSession?: () => void;
   onOpenCommand: () => void;
   onOpenSettings: () => void;
-  soundEnabled: boolean;
-  onToggleSound: () => void;
   theme?: UltronTheme;
-  isListening?: boolean;
-  reducedMotion?: boolean;
-  currentUser?: User | null;
+  isCloudSynced?: boolean;
   onSignIn?: () => void;
-  onSignOut?: () => void;
 }
+
+const MODE_LABELS: Record<AppMode, string> = {
+  chat: 'Assistant',
+  '3d-core': '3D Core Studio',
+  coding: 'Coding Agent',
+  voice: 'Live Voice',
+  docs: 'Document Lab',
+  projects: 'Workspaces',
+};
 
 export const Navigation: React.FC<NavigationProps> = ({
   currentMode,
+  activeSessionTitle,
+  isSidebarOpen,
+  onOpenDesktopSidebar,
+  onOpenMobileDrawer,
   onSelectMode,
   onNewSession,
+  onOpenCommand,
   onOpenSettings,
-  theme = 'amber',
-  isListening = true,
-  reducedMotion = false,
-  currentUser,
+  theme = 'indigo',
+  isCloudSynced = false,
   onSignIn,
-  onSignOut,
 }) => {
   const statusTheme = getSystemStatusThemeConfig(theme);
-  const emblemBreathe = getBreathingPulseConfig('emblem', 0, reducedMotion);
-  const statusBreathe = getBreathingPulseConfig('chip', 1, reducedMotion);
-  const actionBreathe = getBreathingPulseConfig('chip', 2, reducedMotion);
-
-  const navItems: Array<{
-    id: AppMode;
-    label: string;
-    icon: React.FC<{ className?: string }>;
-  }> = [
-    { id: 'chat', label: 'Assistant', icon: MessageSquare },
-    { id: '3d-core', label: '3D Studio', icon: Box },
-    { id: 'coding', label: 'Coding Agent', icon: Code2 },
-    { id: 'docs', label: 'Document Lab', icon: FileText },
-    { id: 'projects', label: 'Workspaces', icon: FolderKanban },
-  ];
+  const headerTitle =
+    currentMode === 'chat'
+      ? activeSessionTitle || 'New chat'
+      : MODE_LABELS[currentMode];
 
   return (
-    <>
-      {/* Minimal Top Navigation Bar (Strict 3-Zone Contract) */}
-      <header className="sticky top-0 z-40 w-full bg-[#040407]/90 border-b border-white/[0.07] px-4 md:px-8 py-3.5 transition-colors">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-6">
-          {/* Zone 1: ULTRON Identity (Single-line brand wordmark + minimal U mark) */}
+    <header className="sticky top-0 z-30 h-14 w-full bg-[#F8F9FB]/90 dark:bg-[#0B0D12]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.07] px-3 sm:px-5 flex items-center justify-between gap-3 shrink-0 transition-colors">
+      {/* Left: Sidebar toggles + Active Context Title */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        {/* Mobile Drawer Toggle */}
+        <button
+          type="button"
+          onClick={onOpenMobileDrawer}
+          aria-label="Open navigation menu"
+          data-testid="mobile-sidebar-toggle-btn"
+          className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/[0.07] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <Menu className="w-4 h-4" />
+        </button>
+
+        {/* Desktop Expand Sidebar Button (visible only when collapsed) */}
+        {!isSidebarOpen && (
           <button
             type="button"
-            onClick={() => onSelectMode('chat')}
-            className="flex items-center gap-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 rounded-lg group whitespace-nowrap shrink-0"
+            onClick={onOpenDesktopSidebar}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+            className="hidden lg:inline-flex p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/[0.07] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
-            <UltronLogoMark size={26} className={emblemBreathe.className} />
-            <span className="text-sm font-semibold tracking-[0.26em] text-slate-100 group-hover:text-white transition-colors">
-              ULTRON
-            </span>
+            <PanelLeftOpen className="w-4 h-4" />
           </button>
+        )}
 
-          {/* Zone 2: Clean Single-Line Text Navigation Links (Zero-Pill Discipline) */}
-          <nav
-            aria-label="Primary Navigation"
-            className="hidden md:flex items-center gap-7 text-xs font-medium"
+        <div className="flex items-center gap-2.5 min-w-0">
+          <h2
+            data-testid="active-session-header-title"
+            className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[180px] sm:max-w-xs"
           >
-            {navItems.map((item) => {
-              const isActive = currentMode === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelectMode(item.id)}
-                  className={`relative py-1 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 rounded ${
-                    isActive
-                      ? 'text-white font-semibold'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {isActive && (
-                    <span
-                      className={`absolute bottom-0 left-0 right-0 h-[1.5px] rounded-full transition-colors duration-300 ${statusTheme.accentBarClass}`}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+            {headerTitle}
+          </h2>
 
-          {/* Zone 3: Top-Right System Online Pulsing Indicator, Auth, New-Session Action & Settings */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Subtle 'System Online' Pulsing Indicator (Theme-Responsive, Active & Listening Cue) */}
-            <button
-              type="button"
-              onClick={() => onSelectMode('voice')}
-              title="Ultron System Online — Active and listening (Click for Voice Mode)"
-              aria-label="System Online — Ultron is active and listening"
-              data-testid="system-online-indicator"
-              data-theme={theme}
-              style={
-                statusBreathe.delayMs
-                  ? { animationDelay: `${statusBreathe.delayMs}ms` }
-                  : undefined
-              }
-              className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium tracking-wide transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${statusTheme.bgColorClass} ${statusTheme.borderColorClass} ${statusBreathe.className}`}
-            >
-              <span className="relative flex h-2 w-2 items-center justify-center">
-                <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 transition-colors duration-300 ${statusTheme.pingColorClass}`}
-                />
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 transition-colors duration-300 ${statusTheme.dotColorClass} ${statusTheme.glowShadowClass}`}
-                />
+          {currentMode === 'chat' && (
+            isCloudSynced ? (
+              <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/25 px-2 py-0.5 rounded-lg shrink-0">
+                <Database className="w-3 h-3" />
+                <span>Synced</span>
               </span>
-              <span className={`transition-colors duration-300 ${statusTheme.textColorClass}`}>
-                {statusTheme.label}
-              </span>
-              {isListening && (
-                <span
-                  aria-hidden="true"
-                  className="hidden lg:inline-flex items-end gap-[2px] h-2.5 ml-0.5 opacity-80 group-hover:opacity-100 transition-opacity"
-                >
-                  <span
-                    className={`w-[1.5px] h-1.5 rounded-full animate-pulse ${statusTheme.dotColorClass}`}
-                  />
-                  <span
-                    className={`w-[1.5px] h-2.5 rounded-full animate-pulse [animation-delay:150ms] ${statusTheme.dotColorClass}`}
-                  />
-                  <span
-                    className={`w-[1.5px] h-1 rounded-full animate-pulse [animation-delay:300ms] ${statusTheme.dotColorClass}`}
-                  />
-                </span>
-              )}
-            </button>
-
-            {currentUser ? (
-              <div
-                data-testid="firebase-user-badge"
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-slate-200"
-              >
-                <UserIcon className={`w-3.5 h-3.5 ${statusTheme.accentIconClass}`} />
-                <span className="hidden xl:inline max-w-[110px] truncate">
-                  {currentUser.displayName || currentUser.email?.split('@')[0] || 'Operator'}
-                </span>
-                {onSignOut && (
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    aria-label="Sign Out"
-                    title="Sign out of Firebase"
-                    className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             ) : (
               onSignIn && (
                 <button
                   type="button"
                   onClick={onSignIn}
                   data-testid="google-signin-button"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] text-slate-200 border border-white/10 text-xs font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                  className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] px-2 py-0.5 rounded-lg transition-colors shrink-0"
                 >
-                  <LogIn className={`w-3.5 h-3.5 ${statusTheme.accentIconClass}`} />
-                  <span className="hidden sm:inline">Sign In</span>
+                  <Database className="w-3 h-3" />
+                  <span>Sync history</span>
                 </button>
               )
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                onSelectMode('chat');
-                onNewSession?.();
-              }}
-              style={
-                actionBreathe.delayMs
-                  ? { animationDelay: `${actionBreathe.delayMs}ms` }
-                  : undefined
-              }
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.11] text-slate-100 border border-white/10 text-xs font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${actionBreathe.className}`}
-            >
-              <Plus className={`w-3.5 h-3.5 transition-colors duration-300 ${statusTheme.accentIconClass}`} />
-              <span className="hidden sm:inline">New Session</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              aria-label="Open Settings"
-              className="p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 border border-white/[0.08] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
+            )
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* Mobile Bottom Navigation Bar (< 768px) */}
-      <nav
-        aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-3 left-3 right-3 z-40 bg-[#08080e]/95 rounded-xl px-2 py-1.5 border border-white/10 shadow-2xl flex items-center justify-around"
-      >
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentMode === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelectMode(item.id)}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-lg transition-colors min-h-[42px] min-w-[44px] ${
-                isActive ? 'text-amber-300' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="text-[10px] font-medium mt-0.5 whitespace-nowrap">
-                {item.label.split(' ')[0]}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-    </>
+      {/* Right: Quick Search, Live Voice / System Online, Mobile New Chat, Settings */}
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={onOpenCommand}
+          title="Command Palette (Cmd+K)"
+          aria-label="Open quick command search"
+          className="hidden sm:inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-100 dark:hover:bg-white/[0.08] border border-slate-200 dark:border-white/[0.08] text-xs text-slate-500 dark:text-slate-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span className="hidden md:inline">Search</span>
+          <kbd className="hidden md:inline text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* System Online / Live Voice Button */}
+        <button
+          type="button"
+          onClick={() => onSelectMode('voice')}
+          title="Live Voice Mode"
+          aria-label="System Online — Start Live Voice"
+          data-testid="system-online-indicator"
+          data-theme={theme}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${statusTheme.bgColorClass} ${statusTheme.borderColorClass}`}
+        >
+          <span className="relative flex h-2 w-2 items-center justify-center">
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${statusTheme.pingColorClass}`}
+            />
+            <span
+              className={`relative inline-flex rounded-full h-2 w-2 ${statusTheme.dotColorClass}`}
+            />
+          </span>
+          <span className={`hidden sm:inline ${statusTheme.textColorClass}`}>
+            {statusTheme.label}
+          </span>
+          <Radio className={`w-3.5 h-3.5 sm:hidden ${statusTheme.accentIconClass}`} />
+        </button>
+
+        {/* Mobile Quick New Chat */}
+        <button
+          type="button"
+          onClick={() => {
+            onSelectMode('chat');
+            onNewSession?.();
+          }}
+          aria-label="New chat"
+          className="lg:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>New chat</span>
+        </button>
+
+        {/* Settings Button */}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          aria-label="Settings"
+          title="Settings"
+          data-testid="header-settings-btn"
+          className="p-2 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-100 dark:hover:bg-white/[0.08] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/[0.08] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
+      </div>
+    </header>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,22 +10,38 @@ import {
   MessageSquare,
   X,
   History,
-  Database,
+  Wrench,
+  Settings,
+  HelpCircle,
+  Code2,
+  FileText,
+  Box,
+  FolderKanban,
+  Mic,
   RefreshCw,
-  Cloud,
+  ChevronDown,
+  ChevronRight,
+  LogIn,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
+import { UltronLogoMark } from './UltronLogoMark';
 import {
   type ChatSessionItem,
   type UltronTheme,
   filterChatSessions,
-  getSessionPreviewSnippet,
-  getBreathingPulseConfig,
   getSystemStatusThemeConfig,
 } from '../utils/ultronLogic';
+import type { AppMode } from './Navigation';
+import type { User } from '../lib/firebase';
 
 interface UltronHistorySidebarProps {
   sessions: ChatSessionItem[];
   activeSessionId: string;
+  currentMode: AppMode;
+  onSelectMode: (mode: AppMode) => void;
+  onOpenSettings: () => void;
+  onOpenHelp: () => void;
   isOpen: boolean;
   onToggleOpen: (nextOpen: boolean) => void;
   isMobileOpen: boolean;
@@ -35,17 +51,22 @@ interface UltronHistorySidebarProps {
   onRenameSession: (sessionId: string, nextTitle: string) => void;
   onDeleteSession: (sessionId: string) => void;
   theme?: UltronTheme;
-  reducedMotion?: boolean;
   isFirestoreConnected?: boolean;
   isFetchingFirestore?: boolean;
   lastSyncedLabel?: string | null;
   onRefreshFirestore?: () => void;
-  onSignInForFirestore?: () => void;
+  currentUser?: User | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
 }
 
 export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
   sessions,
   activeSessionId,
+  currentMode,
+  onSelectMode,
+  onOpenSettings,
+  onOpenHelp,
   isOpen,
   onToggleOpen,
   isMobileOpen,
@@ -54,21 +75,23 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
   onCreateSession,
   onRenameSession,
   onDeleteSession,
-  theme = 'amber',
-  reducedMotion = false,
+  theme = 'indigo',
   isFirestoreConnected = false,
   isFetchingFirestore = false,
   lastSyncedLabel = null,
   onRefreshFirestore,
-  onSignInForFirestore,
+  currentUser = null,
+  onSignIn,
+  onSignOut,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showHistorySearch, setShowHistorySearch] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const statusTheme = getSystemStatusThemeConfig(theme);
-  const sidebarBreathe = getBreathingPulseConfig('panel', 0, reducedMotion);
-
   const filteredSessions = filterChatSessions(sessions, searchQuery);
 
   const handleStartRename = (
@@ -88,150 +111,329 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
     setEditingTitle('');
   };
 
-  const activeSessionAccentClass =
-    theme === 'cyan'
-      ? 'bg-cyan-500/[0.11] border-cyan-400/35 text-white shadow-[0_8px_24px_-8px_rgba(34,211,238,0.25)]'
-      : theme === 'violet'
-      ? 'bg-violet-500/[0.11] border-violet-400/35 text-white shadow-[0_8px_24px_-8px_rgba(167,139,250,0.25)]'
-      : 'bg-amber-500/[0.11] border-amber-400/35 text-white shadow-[0_8px_24px_-8px_rgba(251,191,36,0.22)]';
+  const handleFocusHistory = () => {
+    setShowHistorySearch(true);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 60);
+  };
 
-  const renderFirestoreBanner = () => (
-    <div
-      data-testid="firestore-sidebar-status"
-      className="mt-2.5 px-2.5 py-2 rounded-xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-between gap-2 text-[11px]"
-    >
-      <div className="flex items-center gap-1.5 min-w-0">
-        <Database
-          className={`w-3.5 h-3.5 shrink-0 ${
-            isFirestoreConnected ? 'text-emerald-400' : statusTheme.accentIconClass
+  const toolItems: Array<{
+    id: AppMode;
+    label: string;
+    icon: React.FC<{ className?: string }>;
+  }> = [
+    { id: 'coding', label: 'Coding Agent', icon: Code2 },
+    { id: 'docs', label: 'Document Lab', icon: FileText },
+    { id: '3d-core', label: '3D Core Studio', icon: Box },
+    { id: 'projects', label: 'Workspaces', icon: FolderKanban },
+    { id: 'voice', label: 'Live Voice', icon: Mic },
+  ];
+
+  const renderSidebarBody = (isMobile: boolean) => (
+    <div className="flex flex-col h-full">
+      {/* Top: Brand + Collapse */}
+      <div className="flex items-center justify-between px-1 pb-3">
+        <button
+          type="button"
+          onClick={() => {
+            onSelectMode('chat');
+            if (isMobile) onToggleMobileOpen(false);
+          }}
+          className="flex items-center gap-2.5 text-left rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60"
+        >
+          <UltronLogoMark size={26} />
+          <span className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+            Ultron
+          </span>
+        </button>
+
+        {isMobile ? (
+          <button
+            type="button"
+            aria-label="Close navigation drawer"
+            onClick={() => onToggleMobileOpen(false)}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggleOpen(false)}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Prominent "New chat" CTA */}
+      <button
+        type="button"
+        data-testid="sidebar-new-chat-btn"
+        onClick={() => {
+          onSelectMode('chat');
+          onCreateSession();
+          if (isMobile) onToggleMobileOpen(false);
+        }}
+        className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-medium shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#12151E] cursor-pointer"
+      >
+        <Plus className="w-4 h-4" />
+        <span>New chat</span>
+      </button>
+
+      {/* Primary Navigation Sections */}
+      <nav aria-label="Sidebar Navigation" className="mt-4 space-y-0.5">
+        <button
+          type="button"
+          onClick={() => {
+            onSelectMode('chat');
+            if (isMobile) onToggleMobileOpen(false);
+          }}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+            currentMode === 'chat'
+              ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
           }`}
-        />
-        <div className="truncate">
-          <span className="font-medium text-slate-200">
-            {isFirestoreConnected ? 'Firestore Live Sync' : 'Firestore Ready'}
-          </span>
-          <span className="text-slate-500 ml-1">
-            {isFetchingFirestore
-              ? '· Fetching...'
-              : lastSyncedLabel
-              ? `· ${lastSyncedLabel}`
-              : '· Recent Sessions'}
-          </span>
-        </div>
-      </div>
+        >
+          <MessageSquare className="w-4 h-4 shrink-0" />
+          <span>Chat</span>
+        </button>
 
-      <div className="flex items-center gap-1 shrink-0">
-        {onRefreshFirestore && (
+        <button
+          type="button"
+          onClick={handleFocusHistory}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+            showHistorySearch
+              ? 'bg-slate-100 dark:bg-white/[0.06] text-slate-900 dark:text-white'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <History className="w-4 h-4 shrink-0" />
+            <span>History</span>
+          </span>
+          <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+            {sessions.length}
+          </span>
+        </button>
+
+        <div>
           <button
             type="button"
-            data-testid="refresh-firestore-sessions-btn"
-            onClick={onRefreshFirestore}
-            aria-label="Refresh Firestore sessions"
-            title="Fetch latest sessions from Firestore"
-            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+            onClick={() => setToolsExpanded((prev) => !prev)}
+            aria-expanded={toolsExpanded}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              currentMode !== 'chat'
+                ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+            }`}
           >
-            <RefreshCw
-              className={`w-3 h-3 ${isFetchingFirestore ? 'animate-spin text-amber-300' : ''}`}
-            />
+            <span className="flex items-center gap-2.5">
+              <Wrench className="w-4 h-4 shrink-0" />
+              <span>Tools</span>
+            </span>
+            {toolsExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            )}
           </button>
-        )}
-        {!isFirestoreConnected && onSignInForFirestore && (
-          <button
-            type="button"
-            data-testid="sidebar-firestore-signin-btn"
-            onClick={onSignInForFirestore}
-            className="px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/35 text-amber-200 text-[10px] font-medium transition-colors"
-          >
-            Sync Cloud
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
-  const renderSessionList = (closeMobileOnSelect: boolean) => (
-    <div
-      data-testid="firestore-sessions-list"
-      className="flex-1 overflow-y-auto mt-2.5 space-y-1.5 pr-1"
-    >
-      {filteredSessions.length === 0 ? (
-        <div className="py-8 px-3 text-center text-xs text-slate-500">
-          No matching sessions found.
-        </div>
-      ) : (
-        filteredSessions.map((session) => {
-          const isActive = session.id === activeSessionId;
-          const isEditing = editingSessionId === session.id;
-          const promptCount = session.messages.filter(
-            (m) => m.role === 'user'
-          ).length;
-          const preview = getSessionPreviewSnippet(session);
-
-          return (
-            <div
-              key={session.id}
-              role="button"
-              tabIndex={0}
-              aria-current={isActive ? 'true' : undefined}
-              aria-label={`Switch to session ${session.title}`}
-              data-testid={`history-session-item-${session.id}`}
-              onClick={() => {
-                if (!isEditing) {
-                  onSelectSession(session.id);
-                  if (closeMobileOnSelect) onToggleMobileOpen(false);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (!isEditing && (e.key === 'Enter' || e.key === ' ')) {
-                  e.preventDefault();
-                  onSelectSession(session.id);
-                  if (closeMobileOnSelect) onToggleMobileOpen(false);
-                }
-              }}
-              className={`group rounded-xl px-3 py-2.5 transition-all duration-200 cursor-pointer border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${
-                isActive
-                  ? activeSessionAccentClass
-                  : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.06] hover:border-white/[0.12] text-slate-300 hover:text-white'
-              }`}
-            >
-              {isEditing ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleCommitRename(session.id);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1.5"
-                >
-                  <input
-                    type="text"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    aria-label="Rename conversation"
-                    autoFocus
-                    className="flex-1 bg-black/60 px-2 py-1 rounded text-xs text-white border border-amber-400/50 focus:outline-none"
-                  />
+          {toolsExpanded && (
+            <div className="mt-1 ml-3 pl-3 border-l border-slate-200 dark:border-white/[0.08] space-y-0.5">
+              {toolItems.map((tool) => {
+                const Icon = tool.icon;
+                const isActive = currentMode === tool.id;
+                return (
                   <button
-                    type="submit"
-                    aria-label="Save name"
-                    className="p-1 rounded bg-amber-500 text-slate-950 hover:bg-amber-400"
+                    key={tool.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectMode(tool.id);
+                      if (isMobile) onToggleMobileOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+                    }`}
                   >
-                    <Check className="w-3 h-3" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tool.label}</span>
                   </button>
-                </form>
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <MessageSquare
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive
-                            ? statusTheme.accentIconClass
-                            : 'text-slate-500 group-hover:text-slate-300'
-                        }`}
-                      />
-                      <p className="text-xs font-semibold truncate">
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            onOpenSettings();
+            if (isMobile) onToggleMobileOpen(false);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white transition-colors"
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          <span>Settings</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            onOpenHelp();
+            if (isMobile) onToggleMobileOpen(false);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white transition-colors"
+        >
+          <HelpCircle className="w-4 h-4 shrink-0" />
+          <span>Help &amp; Guide</span>
+        </button>
+      </nav>
+
+      {/* Divider + Recent Chats Header */}
+      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-between px-1">
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          Recent chats
+        </span>
+        <div className="flex items-center gap-1" data-testid="firestore-sidebar-status">
+          {onRefreshFirestore && (
+            <button
+              type="button"
+              data-testid="refresh-firestore-sessions-btn"
+              onClick={onRefreshFirestore}
+              aria-label="Refresh chat history"
+              title={
+                isFirestoreConnected
+                  ? `Synced${lastSyncedLabel ? ` (${lastSyncedLabel})` : ''}`
+                  : 'Refresh saved sessions'
+              }
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${isFetchingFirestore ? 'animate-spin text-indigo-500' : ''}`}
+              />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowHistorySearch((v) => !v)}
+            aria-label="Search chats"
+            title="Search recent chats"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+          >
+            <Search className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Optional Search Filter */}
+      {showHistorySearch && (
+        <div className="mt-2 relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search recent chats..."
+            aria-label="Filter chat sessions"
+            className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.08] text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Recent Chats Scroll List */}
+      <div
+        data-testid="firestore-sessions-list"
+        className="flex-1 overflow-y-auto mt-2 space-y-1 pr-0.5"
+      >
+        {filteredSessions.length === 0 ? (
+          <div className="py-6 px-3 text-center text-xs text-slate-400 dark:text-slate-500">
+            No matching chats found.
+          </div>
+        ) : (
+          filteredSessions.map((session) => {
+            const isActive = session.id === activeSessionId && currentMode === 'chat';
+            const isEditing = editingSessionId === session.id;
+
+            return (
+              <div
+                key={session.id}
+                role="button"
+                tabIndex={0}
+                aria-current={isActive ? 'true' : undefined}
+                aria-label={`Switch to session ${session.title}`}
+                data-testid={`history-session-item-${session.id}`}
+                onClick={() => {
+                  if (!isEditing) {
+                    onSelectSession(session.id);
+                    onSelectMode('chat');
+                    if (isMobile) onToggleMobileOpen(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!isEditing && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onSelectSession(session.id);
+                    onSelectMode('chat');
+                    if (isMobile) onToggleMobileOpen(false);
+                  }
+                }}
+                className={`group rounded-xl px-2.5 py-2 transition-colors cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 ${
+                  isActive
+                    ? 'bg-slate-200/80 dark:bg-white/[0.09] text-slate-900 dark:text-white'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {isEditing ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleCommitRename(session.id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      aria-label="Rename conversation"
+                      autoFocus
+                      className="flex-1 bg-white dark:bg-[#0B0D12] px-2 py-1 rounded-lg text-xs text-slate-900 dark:text-white border border-indigo-500 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      aria-label="Save name"
+                      className="p-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
+                    >
+                      <Check className="w-3 h-3" />
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium truncate">
                         {session.title}
+                      </p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums mt-0.5">
+                        {session.updatedAt}
                       </p>
                     </div>
 
@@ -240,7 +442,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
                         type="button"
                         onClick={(e) => handleStartRename(session, e)}
                         aria-label={`Rename ${session.title}`}
-                        className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-slate-200"
+                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
@@ -251,232 +453,204 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
                           onDeleteSession(session.id);
                         }}
                         aria-label={`Delete ${session.title}`}
-                        className="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-300"
+                        className="p-1 rounded-lg hover:bg-rose-500/15 text-slate-400 hover:text-rose-500"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
 
-                  <p className="text-[11px] text-slate-400 truncate pl-5">
-                    {preview}
-                  </p>
-
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 pl-5 tabular-nums whitespace-nowrap overflow-hidden">
-                    <Cloud
-                      className={`w-2.5 h-2.5 shrink-0 ${
-                        isFirestoreConnected ? 'text-emerald-400' : 'text-slate-500'
-                      }`}
-                    />
-                    <span className="shrink-0">{session.updatedAt}</span>
-                    <span aria-hidden="true" className="shrink-0">·</span>
-                    <span className="shrink-0">
-                      {promptCount} {promptCount === 1 ? 'prompt' : 'prompts'}
-                    </span>
-                    <span aria-hidden="true" className="shrink-0">·</span>
-                    <span className="truncate">{session.contextMode}</span>
-                  </div>
-                </div>
-              )}
+      {/* Bottom User Profile & Plan / Cloud Status */}
+      <div className="pt-3 mt-2 border-t border-slate-200 dark:border-white/[0.08]">
+        {currentUser ? (
+          <div className="flex items-center justify-between gap-2 px-1.5 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.04] transition-colors">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-300 text-xs font-semibold shrink-0">
+                {(currentUser.displayName || currentUser.email || 'U')
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  {currentUser.displayName || currentUser.email?.split('@')[0] || 'Account'}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {isFirestoreConnected ? 'Cloud Sync Active' : 'Standard Plan'}
+                </p>
+              </div>
             </div>
-          );
-        })
-      )}
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                aria-label="Sign out"
+                title="Sign out"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors shrink-0"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/[0.07] flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
+                <UserIcon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                  Guest workspace
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Local history saved
+                </p>
+              </div>
+            </div>
+            {onSignIn && (
+              <button
+                type="button"
+                data-testid="sidebar-firestore-signin-btn"
+                onClick={onSignIn}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 dark:bg-white/[0.08] hover:bg-slate-800 dark:hover:bg-white/[0.14] text-white text-xs font-medium transition-colors shrink-0"
+              >
+                <LogIn className="w-3 h-3" />
+                <span>Sign in</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 
   return (
     <>
-      {/* Desktop Glassmorphic Collapsible Sidebar (lg+) */}
+      {/* Desktop Persistent Sidebar (lg+) */}
       <aside
         aria-label="Conversation History"
         data-testid="conversation-history-sidebar"
         data-collapsed={!isOpen}
-        className={`hidden lg:flex flex-col glass-panel rounded-2xl transition-all duration-300 overflow-hidden shrink-0 ${
-          isOpen
-            ? 'w-72 p-3.5'
-            : 'w-14 py-3.5 px-2 items-center'
+        className={`hidden lg:flex flex-col bg-white dark:bg-[#12151E] border-r border-slate-200 dark:border-white/[0.08] transition-all duration-200 shrink-0 h-full ${
+          isOpen ? 'w-72 p-3.5' : 'w-16 py-3.5 px-2 items-center'
         }`}
       >
         {isOpen ? (
-          <>
-            {/* Expanded Sidebar Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
-              <div className="flex items-center gap-2">
-                <History className={`w-3.5 h-3.5 ${statusTheme.accentIconClass} ${sidebarBreathe.className}`} />
-                <h2 className="text-xs font-semibold tracking-wide text-slate-100">
-                  Recent Sessions
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={onCreateSession}
-                  aria-label="New conversation"
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-slate-100 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-                >
-                  <Plus className={`w-3 h-3 ${statusTheme.accentIconClass}`} />
-                  <span>New</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onToggleOpen(false)}
-                  aria-label="Collapse sidebar"
-                  title="Collapse history sidebar"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/[0.06] transition-colors"
-                >
-                  <PanelLeftClose className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Firestore Status & Manual Fetch Controls */}
-            {renderFirestoreBanner()}
-
-            {/* Glassmorphic Session Filter Input */}
-            <div className="mt-2 relative flex items-center">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter recent sessions..."
-                aria-label="Filter chat sessions"
-                className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-white/20 transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  aria-label="Clear session filter"
-                  className="absolute right-2 text-slate-400 hover:text-white"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-
-            {/* Scrollable Session Switcher List */}
-            {renderSessionList(false)}
-
-            {/* Expanded Sidebar Footer */}
-            <div className="pt-2.5 mt-2 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-slate-400 tabular-nums">
-              <span>
-                {isFirestoreConnected ? 'Firestore cloud synced' : 'Firestore & local cache'}
-              </span>
-              <span>{sessions.length} recent</span>
-            </div>
-          </>
+          renderSidebarBody(false)
         ) : (
-          /* Collapsed Glassmorphic Vertical Rail */
+          /* Collapsed Icon Rail */
           <div className="flex flex-col items-center justify-between h-full w-full">
             <div className="flex flex-col items-center gap-2.5 w-full">
               <button
                 type="button"
                 onClick={() => onToggleOpen(true)}
                 aria-label="Expand sidebar"
-                title="Expand Conversation History"
-                className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.12] border border-white/10 text-slate-200 transition-colors"
+                title="Expand sidebar"
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.07] text-slate-600 dark:text-slate-300 transition-colors"
               >
                 <PanelLeftOpen className={`w-4 h-4 ${statusTheme.accentIconClass}`} />
               </button>
 
               <button
                 type="button"
-                onClick={onCreateSession}
-                aria-label="New conversation"
-                title="Start New Conversation"
-                className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-slate-300 hover:text-white transition-colors"
+                onClick={() => {
+                  onSelectMode('chat');
+                  onCreateSession();
+                }}
+                aria-label="New chat"
+                title="New chat"
+                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-sm"
               >
                 <Plus className="w-4 h-4" />
               </button>
 
-              <div className="w-6 h-[1px] bg-white/10 my-1" />
+              <div className="w-6 h-px bg-slate-200 dark:bg-white/10 my-1" />
 
-              {/* Compact Quick-Switch Session Icons while Collapsed */}
-              <div className="flex flex-col items-center gap-1.5 w-full overflow-y-auto max-h-80">
-                {sessions.map((session, idx) => {
-                  const isActive = session.id === activeSessionId;
-                  return (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => onSelectSession(session.id)}
-                      aria-label={`Switch to ${session.title}`}
-                      title={session.title}
-                      className={`w-9 h-9 rounded-xl text-[11px] font-mono font-semibold flex items-center justify-center transition-all border ${
-                        isActive
-                          ? activeSessionAccentClass
-                          : 'bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      {idx + 1}
-                    </button>
-                  );
-                })}
-              </div>
+              <button
+                type="button"
+                onClick={() => onSelectMode('chat')}
+                aria-label="Chat"
+                title="Chat"
+                className={`p-2 rounded-xl transition-colors ${
+                  currentMode === 'chat'
+                    ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onToggleOpen(true);
+                  handleFocusHistory();
+                }}
+                aria-label="History"
+                title="History"
+                className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <History className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectMode('coding')}
+                aria-label="Coding Agent"
+                title="Coding Agent"
+                className={`p-2 rounded-xl transition-colors ${
+                  currentMode === 'coding'
+                    ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+                }`}
+              >
+                <Code2 className="w-4 h-4" />
+              </button>
             </div>
 
-            <span className="text-[10px] font-mono text-slate-500 tabular-nums">
-              {sessions.length}
-            </span>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                aria-label="Settings"
+                title="Settings"
+                className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onOpenHelp}
+                aria-label="Help"
+                title="Help & Guide"
+                className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </aside>
 
-      {/* Mobile / Tablet Glassmorphic History Slide-Over Drawer (< lg) */}
+      {/* Mobile / Tablet Slide-Over Drawer (< lg) */}
       {isMobileOpen && (
         <div
           onClick={() => onToggleMobileOpen(false)}
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden flex"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs lg:hidden flex"
         >
           <div
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="Mobile Conversation History"
-            className="w-80 max-w-[86vw] h-full glass-panel p-4 flex flex-col justify-between border-r border-white/15 shadow-2xl"
+            aria-label="Navigation Drawer"
+            className="w-80 max-w-[85vw] h-full bg-white dark:bg-[#12151E] p-4 border-r border-slate-200 dark:border-white/10 shadow-2xl"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <History className={`w-4 h-4 ${statusTheme.accentIconClass}`} />
-                <span className="text-xs font-semibold text-white">
-                  Recent Sessions ({sessions.length})
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCreateSession();
-                    onToggleMobileOpen(false);
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-medium"
-                >
-                  + New
-                </button>
-                <button
-                  type="button"
-                  aria-label="Close mobile history drawer"
-                  onClick={() => onToggleMobileOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {renderFirestoreBanner()}
-
-            {renderSessionList(true)}
-
-            <div className="pt-2.5 mt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 tabular-nums">
-              <span>
-                {isFirestoreConnected ? 'Firestore cloud synced' : 'Firestore & local cache'}
-              </span>
-              <span>{sessions.length} recent</span>
-            </div>
+            {renderSidebarBody(true)}
           </div>
         </div>
       )}

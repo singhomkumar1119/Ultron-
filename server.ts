@@ -320,9 +320,27 @@ async function startServer() {
         formattedHistory.pop();
       }
 
+      const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+        return new Promise<T>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${ms}ms`));
+          }, ms);
+          promise
+            .then((val) => {
+              clearTimeout(timer);
+              resolve(val);
+            })
+            .catch((err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+        });
+      };
+
       const runChatWithModel = async (
         targetModel: string,
-        useThinking = true
+        useThinking = true,
+        timeoutMs = 15000
       ) => {
         const thinkingConfig =
           !useThinking
@@ -342,18 +360,30 @@ async function startServer() {
           },
         });
 
-        const response: GenerateContentResponse = await chat.sendMessage({
-          message,
-        });
+        const response: GenerateContentResponse = await withTimeout(
+          chat.sendMessage({
+            message,
+          }),
+          timeoutMs,
+          targetModel
+        );
         return response;
       };
 
       try {
         let response: GenerateContentResponse;
         try {
-          response = await runChatWithModel(requestedModel, true);
+          response = await runChatWithModel(
+            requestedModel,
+            true,
+            freeTierFallback ? 9000 : 25000
+          );
         } catch {
-          response = await runChatWithModel(requestedModel, false);
+          response = await runChatWithModel(
+            requestedModel,
+            false,
+            freeTierFallback ? 7000 : 25000
+          );
         }
         res.json({
           text: response.text ?? '',
@@ -369,7 +399,8 @@ async function startServer() {
           try {
             const fallbackResponse = await runChatWithModel(
               nextFallbackModel,
-              false
+              false,
+              15000
             );
             res.json({
               text: fallbackResponse.text ?? '',
@@ -382,7 +413,8 @@ async function startServer() {
             if (nextFallbackModel !== 'gemini-3.1-flash-lite') {
               const liteResponse = await runChatWithModel(
                 'gemini-3.1-flash-lite',
-                false
+                false,
+                15000
               );
               res.json({
                 text: liteResponse.text ?? '',

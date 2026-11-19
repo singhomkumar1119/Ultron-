@@ -8,65 +8,66 @@ import {
   Code2,
   ChevronDown,
   ChevronUp,
-  PanelLeftOpen,
   Paperclip,
   Mic,
   X,
-  Box,
-  Play,
   Globe,
   MapPin,
   Radio,
   ExternalLink,
-  Database,
   Cpu,
+  Mail,
+  Lightbulb,
+  Rocket,
+  Bug,
+  GraduationCap,
+  FileText,
+  Pencil,
+  Share2,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { UltronEnergyBlob3D } from './UltronEnergyBlob3D';
 import { UltronOrbCanvas } from './UltronOrbCanvas';
-import { UltronHistorySidebar } from './UltronHistorySidebar';
+import { UltronLogoMark } from './UltronLogoMark';
 import { ultronVoiceEngine } from '../utils/ultronVoiceEngine';
 import {
   type ChatSessionItem,
   type StoredChatMessage,
   type GroundingSourceItem,
-  createChatSession,
-  renameChatSession,
-  deleteChatSession,
-  cleanMarkdownSyntax,
+  type UltronTheme,
+  mapThemeTo3D,
   generateSimpleUltronAnswer,
-  sanitizeStoredSession,
   getBreathingPulseConfig,
+  computeTypewriterRevealState,
+  getLiquidGlassAccentConfig,
+  parseFormattedMessageBlocks,
 } from '../utils/ultronLogic';
 import {
   type User,
   saveSessionToFirestore,
   saveMessageToFirestore,
-  renameSessionInFirestore,
-  deleteSessionFromFirestore,
-  subscribeToUserSessions,
-  fetchRecentSessionsFromFirestore,
 } from '../lib/firebase';
 
 export type ChatMessage = StoredChatMessage;
 export type GroundingMode = 'none' | 'search' | 'maps';
 
 interface ChatViewProps {
+  sessions: ChatSessionItem[];
+  activeSession: ChatSessionItem;
+  onUpdateSessions: React.Dispatch<React.SetStateAction<ChatSessionItem[]>>;
   onBranchToCoding: (prompt: string) => void;
   onOpen3DStudio?: () => void;
-  onReplayIntro?: () => void;
   onOpenVoiceMode?: () => void;
-  newSessionSignal?: number;
-  theme: 'amber' | 'cyan' | 'violet';
+  theme: UltronTheme;
   bloomIntensity?: number;
   reducedMotion?: boolean;
   selectedModel?: string;
   onSelectModel?: (model: string) => void;
   currentUser?: User | null;
-  onSignIn?: () => void;
+  externalNotice?: string | null;
+  onClearExternalNotice?: () => void;
 }
-
-const STORAGE_KEY = 'ultron_chat_sessions_v1';
-const ACTIVE_SESSION_KEY = 'ultron_active_session_id_v1';
 
 /**
  * Generates a short 16kHz WAV tone in base64 when microphone hardware is unavailable
@@ -112,261 +113,346 @@ function createSampleWavBase64(): string {
 }
 
 /**
- * Renders Ultron answers cleanly without raw markdown symbols (no ###, **, *, //).
+ * Renders inline URLs as clean clickable links without altering surrounding copy.
  */
-export const SimpleMessageRenderer: React.FC<{ content: string }> = ({ content }) => {
-  const cleaned = cleanMarkdownSyntax(content);
-  const rawLines = cleaned.split('\n');
-
-  const elements: React.ReactNode[] = [];
-  let currentList: { number: string; title?: string; body: string }[] = [];
-  let blockKey = 0;
-
-  const flushList = () => {
-    if (currentList.length > 0) {
-      elements.push(
-        <div key={`list-${blockKey++}`} className="my-2.5 space-y-2">
-          {currentList.map((item, idx) => (
-            <div
-              key={idx}
-              className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-colors"
-            >
-              <span className="shrink-0 w-5 h-5 rounded-md bg-white/[0.06] border border-white/10 text-amber-300 flex items-center justify-center text-xs font-semibold mt-0.5">
-                {item.number}
-              </span>
-              <div className="text-sm leading-relaxed text-slate-200">
-                {item.title && (
-                  <strong className="font-semibold text-white mr-1.5">{item.title}:</strong>
-                )}
-                <span>{item.body}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+function renderInlineTextWithLinks(text: string): React.ReactNode {
+  const urlRegex = /(https?:\/\/[^\s)]+)/g;
+  const parts = text.split(urlRegex);
+  if (parts.length === 1) return text;
+  return parts.map((part, idx) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a
+          key={idx}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-600 dark:text-indigo-400 underline decoration-indigo-400/50 hover:text-indigo-500 break-all"
+        >
+          {part}
+        </a>
       );
-      currentList = [];
     }
+    return <React.Fragment key={idx}>{part}</React.Fragment>;
+  });
+}
+
+/**
+ * Renders formatted Ultron AI responses: headings, section labels, bullet points,
+ * numbered lists, fenced code blocks with copy button, tables, and clickable links.
+ */
+export const SimpleMessageRenderer: React.FC<{
+  content: string;
+  isTyping?: boolean;
+  theme?: UltronTheme;
+}> = ({ content, isTyping = false, theme = 'indigo' }) => {
+  const blocks = parseFormattedMessageBlocks(content, isTyping);
+  const accent = getLiquidGlassAccentConfig(theme);
+  const [copiedCodeIdx, setCopiedCodeIdx] = useState<number | null>(null);
+
+  const handleCopyCode = (idx: number, code: string) => {
+    navigator.clipboard?.writeText(code).catch(() => {});
+    setCopiedCodeIdx(idx);
+    window.setTimeout(() => setCopiedCodeIdx(null), 1800);
   };
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const rawLine = rawLines[i].trim();
-    if (!rawLine) {
-      flushList();
-      continue;
-    }
+  const renderCaret = (show: boolean) =>
+    show ? (
+      <span
+        aria-hidden="true"
+        data-testid="typewriter-caret"
+        className={`ultron-type-caret ${accent.caretClass}`}
+      />
+    ) : null;
 
-    const listMatch = rawLine.match(/^(\d+)[\.\)]\s+(.*)$/);
-    if (listMatch) {
-      const num = listMatch[1];
-      const rest = listMatch[2];
-      const colonIdx = rest.indexOf(':');
-      if (colonIdx > 0 && colonIdx < 45) {
-        currentList.push({
-          number: num,
-          title: rest.slice(0, colonIdx).trim(),
-          body: rest.slice(colonIdx + 1).trim(),
-        });
-      } else {
-        currentList.push({
-          number: num,
-          body: rest,
-        });
-      }
-      continue;
-    }
+  return (
+    <div className="space-y-2.5 text-[15px] leading-relaxed text-slate-800 dark:text-slate-200">
+      {blocks.length === 0 && isTyping && (
+        <p className="my-1">{renderCaret(true)}</p>
+      )}
 
-    flushList();
+      {blocks.map((block, bIdx) => {
+        const isLastBlock = bIdx === blocks.length - 1;
+        const animClass = isTyping ? 'ultron-glass-reveal-line' : '';
 
-    const isFirstLineHeader = i === 0 && rawLine.length < 70 && !rawLine.endsWith('.');
-    if (isFirstLineHeader) {
-      elements.push(
-        <div
-          key={`h-${blockKey++}`}
-          className="mb-3 pb-2 border-b border-white/[0.08]"
-        >
-          <h3 className="text-base font-semibold text-white tracking-wide">{rawLine}</h3>
-        </div>
-      );
-      continue;
-    }
+        if (block.kind === 'heading') {
+          return (
+            <h3
+              key={`h-${bIdx}`}
+              className={`text-base sm:text-lg font-semibold text-slate-900 dark:text-white tracking-tight pt-1 pb-1.5 border-b border-slate-200/80 dark:border-white/[0.08] ${animClass}`}
+            >
+              {block.text}
+              {renderCaret(isTyping && isLastBlock)}
+            </h3>
+          );
+        }
 
-    const isSectionHeader =
-      rawLine.endsWith(':') &&
-      rawLine.length < 50 &&
-      !rawLine.includes('http');
+        if (block.kind === 'section') {
+          return (
+            <div
+              key={`sec-${bIdx}`}
+              className={`text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider pt-2 ${animClass}`}
+            >
+              {block.text}
+              {renderCaret(isTyping && isLastBlock)}
+            </div>
+          );
+        }
 
-    if (isSectionHeader) {
-      elements.push(
-        <div
-          key={`sec-${blockKey++}`}
-          className="text-xs font-semibold text-amber-400 uppercase tracking-wider mt-3.5 mb-1"
-        >
-          {rawLine}
-        </div>
-      );
-      continue;
-    }
+        if (block.kind === 'bullets') {
+          return (
+            <ul key={`bul-${bIdx}`} className="space-y-2 my-1">
+              {block.items.map((item, idx) => {
+                const isLastItem = isLastBlock && idx === block.items.length - 1;
+                return (
+                  <li
+                    key={`b-${idx}`}
+                    className={`flex items-start gap-2.5 ${animClass}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      {item.title && (
+                        <strong className="font-semibold text-slate-900 dark:text-white mr-1.5">
+                          {item.title}:
+                        </strong>
+                      )}
+                      <span>{renderInlineTextWithLinks(item.body)}</span>
+                      {renderCaret(isTyping && isLastItem)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          );
+        }
 
-    elements.push(
-      <p key={`p-${blockKey++}`} className="my-2 text-sm leading-relaxed text-slate-200">
-        {rawLine}
-      </p>
-    );
-  }
+        if (block.kind === 'numbered') {
+          return (
+            <ol key={`num-${bIdx}`} className="space-y-2 my-1">
+              {block.items.map((item, idx) => {
+                const isLastItem = isLastBlock && idx === block.items.length - 1;
+                return (
+                  <li
+                    key={`li-${idx}`}
+                    className={`flex items-start gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.07] ${animClass}`}
+                  >
+                    <span className="shrink-0 w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-400/25 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-xs font-semibold mt-0.5 tabular-nums">
+                      {item.number}
+                    </span>
+                    <div className="min-w-0 text-[14px] leading-relaxed">
+                      {item.title && (
+                        <strong className="font-semibold text-slate-900 dark:text-white mr-1.5">
+                          {item.title}:
+                        </strong>
+                      )}
+                      <span>{renderInlineTextWithLinks(item.body)}</span>
+                      {renderCaret(isTyping && isLastItem)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          );
+        }
 
-  flushList();
+        if (block.kind === 'code') {
+          return (
+            <div
+              key={`code-${bIdx}`}
+              className={`my-2 rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-950 text-slate-100 ${animClass}`}
+            >
+              <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 border-b border-white/10 text-xs text-slate-400">
+                <span className="font-mono uppercase tracking-wider text-[11px]">
+                  {block.language}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(bIdx, block.code)}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition-colors"
+                >
+                  {copiedCodeIdx === bIdx ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy code</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <pre className="p-3.5 overflow-x-auto text-xs sm:text-[13px] font-mono leading-relaxed">
+                <code>{block.code}</code>
+              </pre>
+            </div>
+          );
+        }
 
-  return <div className="space-y-1">{elements}</div>;
+        if (block.kind === 'table') {
+          return (
+            <div
+              key={`tbl-${bIdx}`}
+              className={`my-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10 ${animClass}`}
+            >
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-white/[0.05] border-b border-slate-200 dark:border-white/10">
+                    {block.headers.map((header, hIdx) => (
+                      <th
+                        key={hIdx}
+                        className="px-3.5 py-2.5 font-semibold text-slate-900 dark:text-white whitespace-nowrap"
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/80 dark:divide-white/[0.07]">
+                  {block.rows.map((row, rIdx) => (
+                    <tr
+                      key={rIdx}
+                      className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                    >
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className="px-3.5 py-2 text-slate-700 dark:text-slate-300"
+                        >
+                          {renderInlineTextWithLinks(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        return (
+          <p key={`p-${bIdx}`} className={`leading-relaxed ${animClass}`}>
+            {renderInlineTextWithLinks(block.text)}
+            {renderCaret(isTyping && isLastBlock)}
+          </p>
+        );
+      })}
+    </div>
+  );
 };
 
-const DEFAULT_SESSIONS: ChatSessionItem[] = [
-  createChatSession('Current Session', 'Deep Research', 'session-default'),
-  {
-    id: 'session-photonics',
-    title: 'Silicon Photonics & Optical Fabric',
-    updatedAt: '20:45',
-    contextMode: 'Deep Research',
-    messages: [
-      {
-        id: 'm1',
-        role: 'assistant',
-        content:
-          'Greetings. I am Ultron. Ready to assist with system architecture, deep research, and code synthesis.',
-        timestamp: '20:44',
-        contextMode: 'Deep Research',
-        model: 'gemini-4-hydrogen',
-      },
-      {
-        id: 'u-seed-1',
-        role: 'user',
-        content:
-          'Synthesize the state of optical compute interconnects and silicon photonics for 2026 AI clusters.',
-        timestamp: '20:45',
-        contextMode: 'Deep Research',
-      },
-      {
-        id: 'a-seed-1',
-        role: 'assistant',
-        content: `State of Silicon Photonics and Optical Interconnects
+interface TypewriterLiquidMessageProps {
+  content: string;
+  isRevealing: boolean;
+  reducedMotion: boolean;
+  theme: UltronTheme;
+  onRevealComplete: () => void;
+}
 
-Optical interconnects and co-packaged silicon photonics represent the primary scaling frontier for high-density compute clusters. By transmitting data via modulated light waves across silicon waveguides rather than electrical copper wiring, modern AI fabrics eliminate electrical resistance, heat dissipation bottlenecks, and line-loss attenuation.
+const TypewriterLiquidMessage: React.FC<TypewriterLiquidMessageProps> = ({
+  content,
+  isRevealing,
+  reducedMotion,
+  theme,
+  onRevealComplete,
+}) => {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const completedRef = useRef(false);
+  const onRevealCompleteRef = useRef(onRevealComplete);
+  onRevealCompleteRef.current = onRevealComplete;
+  const accent = getLiquidGlassAccentConfig(theme);
 
-Core Technical Vectors:
-1. High Bandwidth Density: Micro-ring resonator arrays enable multi-wavelength division multiplexing directly along the substrate perimeter, delivering massive bidirectional throughput.
-2. Thermal and Energy Efficiency: External continuous-wave laser sources isolate thermal dissipation from compute dies, bringing energy consumption below 1.5 picojoules per bit.
-3. Low Latency Switching: Direct optical circuit switching bypasses electrical packet buffering stages during collective operations, cutting all-reduce latency significantly.
+  useEffect(() => {
+    completedRef.current = false;
+    setElapsedMs(0);
 
-Architecture Summary: Transitioning to co-packaged optical interconnects enables multi-chassis AI superclusters to function as a unified, coherent compute plane with near-zero interconnect degradation.`,
-        thinkingSteps: [
-          'Evaluating optical waveguide benchmarks and substrate density',
-          'Synthesizing co-packaged optics (CPO) architectural parameters',
-          'Formatting clean high-density technical brief without raw syntax symbols',
-        ],
-        timestamp: '20:45',
-        contextMode: 'Deep Research',
-        model: 'gemini-4-hydrogen',
-      },
-    ],
-  },
-  {
-    id: 'session-rate-limiter',
-    title: 'Distributed Token-Bucket Rate Limiter',
-    updatedAt: '19:20',
-    contextMode: 'Code Architect',
-    messages: [
-      {
-        id: 'm1-rl',
-        role: 'assistant',
-        content:
-          'Greetings. I am Ultron. Ready to assist with system architecture, deep research, and code synthesis.',
-        timestamp: '19:18',
-        contextMode: 'Code Architect',
-        model: 'gemini-4-hydrogen',
-      },
-      {
-        id: 'u-seed-rl',
-        role: 'user',
-        content:
-          'Design a fault-tolerant distributed rate limiter in TypeScript with sub-millisecond P99 latency.',
-        timestamp: '19:19',
-        contextMode: 'Code Architect',
-      },
-      {
-        id: 'a-seed-rl',
-        role: 'assistant',
-        content: `Distributed Token-Bucket Rate Limiter Architecture
+    if (!isRevealing || reducedMotion) {
+      return;
+    }
 
-To achieve sub-millisecond P99 latency across edge gateways without race conditions, combine local in-memory token leases with atomic Redis cluster synchronization:
+    let rafId = 0;
+    const startTime = performance.now();
 
-1. Atomic Refill Evaluation: Compute token replenishment and decrement in a single server-side atomic step using monotonic timestamps so concurrent workers never double-spend capacity.
-2. Sliding-Window Burst Guard: Pair the primary token bucket with a short sub-second sliding counter to absorb traffic spikes while enforcing strict average throughput.
-3. Graceful Degradation: Fall back to deterministic local memory quotas with bounded jitter if the coordination cluster experiences a network partition.`,
-        thinkingSteps: [
-          'Analyzing race conditions in read-modify-write distributed counters',
-          'Structuring atomic token replenishment math and sliding burst window',
-        ],
-        timestamp: '19:20',
-        contextMode: 'Code Architect',
-        model: 'gemini-4-hydrogen',
-      },
-    ],
-  },
-];
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const nextState = computeTypewriterRevealState(content, elapsed, {
+        charsPerSecond: 135,
+        maxDurationMs: 3400,
+        reducedMotion: false,
+      });
+      setElapsedMs(elapsed);
+
+      if (nextState.isComplete) {
+        if (!completedRef.current) {
+          completedRef.current = true;
+          onRevealCompleteRef.current();
+        }
+        return;
+      }
+
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [content, isRevealing, reducedMotion]);
+
+  if (!isRevealing || reducedMotion) {
+    return <SimpleMessageRenderer content={content} isTyping={false} theme={theme} />;
+  }
+
+  const reveal = computeTypewriterRevealState(content, elapsedMs, {
+    charsPerSecond: 135,
+    maxDurationMs: 3400,
+    reducedMotion: false,
+  });
+
+  return (
+    <div data-testid="typewriter-reveal-container" data-progress={reveal.progress}>
+      <SimpleMessageRenderer
+        content={reveal.visibleText}
+        isTyping={!reveal.isComplete}
+        theme={theme}
+      />
+      {!reveal.isComplete && (
+        <div className="mt-3 pt-2.5 border-t border-slate-200 dark:border-white/[0.07] flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span className={`font-mono text-[11px] ${accent.badgeTextClass}`}>
+            Generating · {Math.round(reveal.progress * 100)}%
+          </span>
+          <button
+            type="button"
+            data-testid="typewriter-skip-btn"
+            onClick={onRevealComplete}
+            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.06] hover:bg-slate-200 dark:hover:bg-white/[0.12] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors"
+          >
+            Show full response
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ChatView: React.FC<ChatViewProps> = ({
+  activeSession,
+  onUpdateSessions,
   onBranchToCoding,
   onOpen3DStudio,
-  onReplayIntro,
   onOpenVoiceMode,
-  newSessionSignal = 0,
   theme,
   bloomIntensity = 0.85,
   reducedMotion = false,
   selectedModel = 'gemini-4-hydrogen',
   onSelectModel,
   currentUser = null,
-  onSignIn,
+  externalNotice = null,
+  onClearExternalNotice,
 }) => {
   const coreBreathe = getBreathingPulseConfig('core', 0, reducedMotion);
-  const composerBreathe = getBreathingPulseConfig('composer', 1, reducedMotion);
-
-  const [sessions, setSessions] = useState<ChatSessionItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as ChatSessionItem[];
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const cleaned = parsed.map(sanitizeStoredSession);
-            const existingIds = new Set(cleaned.map((s) => s.id));
-            const merged = [...cleaned];
-            for (const seed of DEFAULT_SESSIONS) {
-              if (!existingIds.has(seed.id)) {
-                merged.push(seed);
-              }
-            }
-            return merged;
-          }
-        }
-      } catch {
-        // Fallback to default seed sessions
-      }
-    }
-    return DEFAULT_SESSIONS;
-  });
-
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const savedId = localStorage.getItem(ACTIVE_SESSION_KEY);
-      if (savedId) return savedId;
-    }
-    return 'session-default';
-  });
-
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
-  const [isFetchingFirestore, setIsFetchingFirestore] = useState(false);
-  const [lastSyncedLabel, setLastSyncedLabel] = useState<string | null>(null);
 
   const [input, setInput] = useState('');
   const [groundingMode, setGroundingMode] = useState<GroundingMode>('none');
@@ -382,16 +468,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [revealingMessageId, setRevealingMessageId] = useState<string | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [sharedId, setSharedId] = useState<string | null>(null);
+  const [feedbackByMsg, setFeedbackByMsg] = useState<Record<string, 'up' | 'down' | null>>({});
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const wasRevealingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
-  const lastSignalRef = useRef(newSessionSignal);
-  const seededFirestoreForUidRef = useRef<string | null>(null);
 
   const [voiceState, setVoiceState] = useState(() => ultronVoiceEngine.getLiveState());
 
@@ -399,122 +490,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
     return ultronVoiceEngine.subscribe((st) => setVoiceState(st));
   }, []);
 
-  const mergeCloudAndLocalSessions = (
-    cloudSessions: ChatSessionItem[],
-    localSessions: ChatSessionItem[]
-  ): ChatSessionItem[] => {
-    const localById = new Map(localSessions.map((s) => [s.id, s]));
-    const mergedCloud = cloudSessions.map((cloudSess) => {
-      const localSess = localById.get(cloudSess.id);
-      if (!localSess) return cloudSess;
-
-      const cloudMsgIds = new Set(cloudSess.messages.map((m) => m.id));
-      const unsyncedLocalMsgs = localSess.messages.filter(
-        (m) => !cloudMsgIds.has(m.id)
-      );
-      const mergedMessages =
-        unsyncedLocalMsgs.length > 0
-          ? [...cloudSess.messages, ...unsyncedLocalMsgs]
-          : cloudSess.messages.length >= localSess.messages.length
-          ? cloudSess.messages
-          : localSess.messages;
-
-      return {
-        ...cloudSess,
-        title:
-          localSess.messages.length > cloudSess.messages.length
-            ? localSess.title
-            : cloudSess.title,
-        updatedAt:
-          localSess.messages.length > cloudSess.messages.length
-            ? localSess.updatedAt
-            : cloudSess.updatedAt,
-        messages: mergedMessages,
-      };
-    });
-
-    const cloudIds = new Set(cloudSessions.map((s) => s.id));
-    const remaining = localSessions.filter((s) => !cloudIds.has(s.id));
-    return [...mergedCloud, ...remaining];
-  };
-
-  // Real-time Firestore subscription + initial seed when authenticated
   useEffect(() => {
-    if (!currentUser) {
-      setLastSyncedLabel(null);
-      return;
+    if (externalNotice) {
+      setStatusNotice(externalNotice);
+      onClearExternalNotice?.();
     }
-
-    setIsFetchingFirestore(true);
-    const unsub = subscribeToUserSessions(currentUser, (cloudSessions) => {
-      const timeNow = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      setIsFetchingFirestore(false);
-      setLastSyncedLabel(`Synced ${timeNow}`);
-
-      if (cloudSessions.length > 0) {
-        setSessions((prev) => mergeCloudAndLocalSessions(cloudSessions, prev));
-      } else if (seededFirestoreForUidRef.current !== currentUser.uid) {
-        // Seed the user's current sessions into Firestore so they persist in the cloud
-        seededFirestoreForUidRef.current = currentUser.uid;
-        setSessions((currentList) => {
-          currentList.forEach((sess) => {
-            saveSessionToFirestore(currentUser, sess, selectedModel)
-              .then(() => {
-                sess.messages.forEach((m) => {
-                  saveMessageToFirestore(currentUser, sess.id, m).catch(() => {});
-                });
-              })
-              .catch(() => {});
-          });
-          return currentList;
-        });
-      }
-    });
-
-    return () => unsub();
-  }, [currentUser, selectedModel]);
-
-  const handleRefreshFirestoreSessions = async () => {
-    setIsFetchingFirestore(true);
-    try {
-      if (currentUser) {
-        const recent = await fetchRecentSessionsFromFirestore(currentUser);
-        const timeNow = new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setLastSyncedLabel(`Fetched ${timeNow}`);
-        if (recent.length > 0) {
-          setSessions((prev) => mergeCloudAndLocalSessions(recent, prev));
-        }
-        setStatusNotice(
-          `Fetched ${recent.length} recent session(s) from Firestore.`
-        );
-      } else {
-        const timeNow = new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setLastSyncedLabel(`Checked ${timeNow}`);
-        setStatusNotice(
-          'Showing recent sessions from cache. Sign in with Google to sync sessions across devices in Firestore.'
-        );
-      }
-    } catch (err: any) {
-      setStatusNotice(
-        `Firestore fetch notice: ${err?.message || 'Unable to fetch sessions'}`
-      );
-    } finally {
-      setIsFetchingFirestore(false);
-    }
-  };
+  }, [externalNotice, onClearExternalNotice]);
 
   // Request geolocation when Google Maps grounding is enabled
   useEffect(() => {
-    if (groundingMode === 'maps' && !userLatLng && typeof navigator !== 'undefined' && navigator.geolocation) {
+    if (
+      groundingMode === 'maps' &&
+      !userLatLng &&
+      typeof navigator !== 'undefined' &&
+      navigator.geolocation
+    ) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setUserLatLng({
@@ -522,69 +512,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
             longitude: pos.coords.longitude,
           });
         },
-        () => {
-          // Optional geolocation; Maps grounding works with or without latLng
-        },
+        () => {},
         { timeout: 4000 }
       );
     }
   }, [groundingMode, userLatLng]);
 
-  // Sync sessions to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-      } catch {
-        // Ignore quota errors
-      }
-    }
-  }, [sessions]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
-      } catch {
-        // Ignore
-      }
-    }
-  }, [activeSessionId]);
-
-  const activeSession =
-    sessions.find((s) => s.id === activeSessionId) || sessions[0];
-  const messages = activeSession.messages;
-  const activeContext = activeSession.contextMode;
-
-  const handleCreateSession = (customTitle?: string) => {
-    const titleToUse = customTitle?.trim() || `Session ${sessions.length + 1}`;
-    const created = createChatSession(titleToUse, activeContext);
-    setSessions((prev) => [created, ...prev]);
-    setActiveSessionId(created.id);
-    setIsMobileHistoryOpen(false);
-    setInput('');
-    setAttachedDemoFile(null);
-
-    if (currentUser) {
-      saveSessionToFirestore(currentUser, created, selectedModel)
-        .then(() => {
-          if (created.messages[0]) {
-            return saveMessageToFirestore(currentUser, created.id, created.messages[0]);
-          }
-        })
-        .catch(() => {});
-    }
-  };
-
-  // Respond to top-nav "New Session" button signal
-  useEffect(() => {
-    if (newSessionSignal !== lastSignalRef.current) {
-      lastSignalRef.current = newSessionSignal;
-      handleCreateSession('New Session');
-    }
-  }, [newSessionSignal]);
-
-  // Naturally expand composer textarea as user types
+  // Auto-resize composer textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -593,62 +527,103 @@ export const ChatView: React.FC<ChatViewProps> = ({
     el.style.height = `${nextHeight}px`;
   }, [input]);
 
-  const suggestionChips = [
+  const messages = activeSession.messages;
+  const activeContext = activeSession.contextMode;
+  const isHomeEmptyState = messages.length <= 1 && !isStreaming;
+
+  // Smooth auto-scroll on new messages and during typewriter reveal
+  useEffect(() => {
+    const scrollToBottom = (behavior: ScrollBehavior = reducedMotion ? 'auto' : 'smooth') => {
+      chatEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+    };
+
+    if (messages.length > 1 || streamingContent) {
+      scrollToBottom();
+    }
+
+    if (revealingMessageId) {
+      wasRevealingRef.current = true;
+      const intervalId = window.setInterval(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const distanceFromBottom =
+          container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (distanceFromBottom < 220) {
+          scrollToBottom();
+        }
+      }, 220);
+      return () => window.clearInterval(intervalId);
+    }
+
+    if (wasRevealingRef.current) {
+      wasRevealingRef.current = false;
+      const rafId = window.requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+      return () => window.cancelAnimationFrame(rafId);
+    }
+  }, [messages.length, streamingContent, revealingMessageId, reducedMotion]);
+
+  const promptCards: Array<{
+    title: string;
+    subtitle: string;
+    prompt: string;
+    icon: React.FC<{ className?: string }>;
+    mode: GroundingMode;
+  }> = [
     {
-      label: 'Distributed rate limiter in TypeScript',
+      title: 'Write a professional email',
+      subtitle: 'Clear, persuasive tone for clients or leadership',
       prompt:
-        'Design a high-throughput distributed token bucket and sliding-window rate limiter in TypeScript with Redis fallback.',
-      mode: 'none' as GroundingMode,
+        'Help me write a concise, professional follow-up email after a product architecture meeting, summarizing key decisions and next steps.',
+      icon: Mail,
+      mode: 'none',
     },
     {
-      label: 'Latest AI chip breakthroughs (Google Search)',
+      title: 'Explain a concept simply',
+      subtitle: 'Step-by-step intuition without dense jargon',
       prompt:
-        'What are the latest announcements in optical interconnects and AI accelerator clusters?',
-      mode: 'search' as GroundingMode,
+        'Explain how distributed consensus protocols like Raft work using a clear, everyday analogy and a short summary table.',
+      icon: Lightbulb,
+      mode: 'none',
     },
     {
-      label: 'Tech innovation hubs nearby (Google Maps)',
+      title: 'Brainstorm startup ideas',
+      subtitle: 'High-potential niches & product angles',
       prompt:
-        'What top robotics and AI research labs or coffee workspaces are in San Francisco?',
-      mode: 'maps' as GroundingMode,
+        'Brainstorm 5 practical B2B SaaS startup ideas for 2026, including target customer, core pain point, and MVP scope.',
+      icon: Rocket,
+      mode: 'none',
     },
     {
-      label: 'Multi-agent consensus protocol',
+      title: 'Debug my code',
+      subtitle: 'Find root causes, edge cases, and clean fixes',
       prompt:
-        'Outline a supervisory protocol for coordinating autonomous sub-agents with deterministic rollback.',
-      mode: 'none' as GroundingMode,
+        'Design a fault-tolerant token-bucket rate limiter in TypeScript with atomic refill logic and show common race condition pitfalls to avoid.',
+      icon: Bug,
+      mode: 'none',
+    },
+    {
+      title: 'Create a study plan',
+      subtitle: 'Structured weekly roadmap to master a topic',
+      prompt:
+        'Create a focused 4-week study plan to master TypeScript system design, async concurrency, and performance profiling.',
+      icon: GraduationCap,
+      mode: 'none',
+    },
+    {
+      title: 'Summarize a long document',
+      subtitle: 'Extract takeaways, risks, and action items',
+      prompt:
+        'Provide a crisp executive summary template for turning a 20-page technical proposal into key findings, risks, and action items.',
+      icon: FileText,
+      mode: 'none',
     },
   ];
 
-  useEffect(() => {
-    if (messages.length > 1 || streamingContent) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages.length, streamingContent]);
-
-  const handleRenameSession = (sessionId: string, nextTitle: string) => {
-    if (nextTitle.trim()) {
-      setSessions((prev) => renameChatSession(prev, sessionId, nextTitle.trim()));
-      if (currentUser) {
-        renameSessionInFirestore(currentUser, sessionId, nextTitle.trim()).catch(() => {});
-      }
-    }
-  };
-
-  const handleDeleteSession = (sessionId: string) => {
-    const updated = deleteChatSession(sessions, sessionId);
-    setSessions(updated);
-    if (activeSession.id === sessionId) {
-      setActiveSessionId(updated[0].id);
-    }
-    if (currentUser) {
-      deleteSessionFromFirestore(currentUser, sessionId).catch(() => {});
-    }
-  };
-
   const transcribeBase64Audio = async (base64Audio: string, mimeType: string) => {
     setIsTranscribingAudio(true);
-    setStatusNotice('Transcribing audio with gemini-3.5-transcribe...');
+    setStatusNotice('Transcribing audio with Gemini...');
     try {
       const response = await fetch('/api/gemini/transcribe', {
         method: 'POST',
@@ -668,17 +643,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
         (data.text || '').trim() ||
         'Synthesize the architecture for an autonomous multi-agent workflow.';
       setInput((prev) => (prev ? `${prev} ${transcribedText}` : transcribedText));
-      setStatusNotice(
-        data.fallbackNotice || 'Audio transcribed via gemini-3.5-transcribe.'
-      );
+      setStatusNotice(data.fallbackNotice || 'Audio transcribed.');
       textareaRef.current?.focus();
     } catch (err: any) {
       const fallbackText =
         'Design a resilient event-driven microservice mesh with idempotent replay.';
       setInput((prev) => (prev ? `${prev} ${fallbackText}` : fallbackText));
-      setStatusNotice(
-        `gemini-3.5-transcribe notice: ${err?.message || 'Inserted voice prompt'}`
-      );
+      setStatusNotice(`Transcription notice: ${err?.message || 'Inserted prompt'}`);
     } finally {
       setIsTranscribingAudio(false);
     }
@@ -702,7 +673,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       setAttachedDemoFile(
         `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`
       );
-      setStatusNotice(`Attached ${file.name} for context analysis.`);
+      setStatusNotice(`Attached ${file.name} to your next message.`);
     }
     e.target.value = '';
   };
@@ -752,9 +723,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         mediaRecorderRef.current = recorder;
         recorder.start();
         setIsRecordingAudio(true);
-        setStatusNotice(
-          'Recording microphone audio... Click Microphone again to transcribe with gemini-3.5-transcribe.'
-        );
+        setStatusNotice('Listening... Click Stop when finished speaking.');
         setTimeout(() => {
           if (recorder.state === 'recording') {
             recorder.stop();
@@ -812,10 +781,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
       (activeSession.title === 'Primary Neural Directive' ||
         activeSession.title === 'Current Session' ||
         activeSession.title === 'New Session' ||
+        activeSession.title === 'New chat' ||
         activeSession.title.startsWith('Session '));
 
     const derivedTitle = shouldAutoTitle
-      ? text.slice(0, 36) + (text.length > 36 ? '...' : '')
+      ? text.slice(0, 42) + (text.length > 42 ? '...' : '')
       : activeSession.title;
 
     const historyForApi = activeSession.messages.map((m) => ({
@@ -823,7 +793,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       content: m.content,
     }));
 
-    setSessions((prev) =>
+    onUpdateSessions((prev) =>
       prev.map((s) =>
         s.id === currentSessionId
           ? {
@@ -885,7 +855,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         hour: '2-digit',
         minute: '2-digit',
       });
-      const cleanedText = cleanMarkdownSyntax(data.text);
+      const formattedText = String(data.text).trim();
       const groundingSources: GroundingSourceItem[] | undefined =
         Array.isArray(data.groundingSources) && data.groundingSources.length > 0
           ? data.groundingSources
@@ -898,14 +868,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
       const assistantMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content: cleanedText,
+        content: formattedText,
         thinkingSteps: [
           `Model: ${data.modelUsed || selectedModel}`,
           effectiveGrounding === 'search'
-            ? 'Grounded with live Google Search data'
+            ? 'Grounded with Google Search'
             : effectiveGrounding === 'maps'
-            ? 'Grounded with live Google Maps place data'
-            : 'Multi-turn conversation history synchronized',
+            ? 'Grounded with Google Maps'
+            : 'Context-aware multi-turn response',
         ],
         timestamp: replyTime,
         contextMode: nextContextMode,
@@ -913,7 +883,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         groundingSources,
       };
 
-      setSessions((prev) =>
+      setRevealingMessageId(assistantMsg.id);
+      onUpdateSessions((prev) =>
         prev.map((s) =>
           s.id === currentSessionId
             ? {
@@ -984,7 +955,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         groundingSources: fallbackSources,
       };
 
-      setSessions((prev) =>
+      setRevealingMessageId(assistantMsg.id);
+      onUpdateSessions((prev) =>
         prev.map((s) =>
           s.id === currentSessionId
             ? {
@@ -1020,485 +992,472 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   };
 
+  const handleRegenerateFromMessage = (msgIndex: number) => {
+    for (let i = msgIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        handleSend(messages[i].content);
+        return;
+      }
+    }
+    handleSend(messages[msgIndex].content.slice(0, 80));
+  };
+
+  const handleSaveEditedPrompt = (originalText: string) => {
+    const trimmed = editingText.trim();
+    setEditingMsgId(null);
+    setEditingText('');
+    if (trimmed && trimmed !== originalText) {
+      handleSend(trimmed);
+    }
+  };
+
   const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard?.writeText(text).catch(() => {});
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleShare = async (id: string, text: string) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Ultron — ${activeSession.title}`,
+          text,
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setSharedId(id);
+      setTimeout(() => setSharedId(null), 2000);
+    } catch {
+      navigator.clipboard?.writeText(text).catch(() => {});
+      setSharedId(id);
+      setTimeout(() => setSharedId(null), 2000);
+    }
   };
 
   const toggleThinking = (id: string) => {
     setExpandedThinking((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const isHomeEmptyState = messages.length <= 1 && !isStreaming;
-
-  const renderGroundingToolbar = () => (
-    <div className="flex flex-wrap items-center gap-1.5 pb-2 mb-2 border-b border-white/[0.06]">
-      {/* Model Selector for Multi-Turn Chat */}
-      <div className="flex items-center gap-1 bg-white/[0.04] border border-white/10 rounded-lg px-2 py-1">
-        <Cpu className={`w-3 h-3 text-amber-400 shrink-0 ${composerBreathe.className}`} />
+  const renderComposerControls = () => (
+    <div className="flex flex-wrap items-center gap-1.5 pb-2.5 mb-2.5 border-b border-slate-200/80 dark:border-white/[0.06]">
+      {/* Model Selector */}
+      <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.05] border border-slate-200/80 dark:border-white/10 rounded-xl px-2.5 py-1">
+        <Cpu className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
         <select
-          aria-label="Select Gemini Model"
+          aria-label="Select AI Model"
           data-testid="chat-model-selector"
           value={selectedModel}
           onChange={(e) => onSelectModel?.(e.target.value)}
-          className="bg-transparent text-[11px] font-medium text-slate-200 focus:outline-none cursor-pointer"
+          className="bg-transparent text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
         >
-          <option value="gemini-4-hydrogen" className="bg-slate-950">
-            gemini-4-hydrogen (General · Free Key)
+          <option value="gemini-4-hydrogen" className="bg-white dark:bg-slate-950">
+            Gemini 4 Hydrogen (General)
           </option>
-          <option value="gemini-3.1-flash-lite" className="bg-slate-950">
-            gemini-3.1-flash-lite (Fast · Free Key)
+          <option value="gemini-3.1-flash-lite" className="bg-white dark:bg-slate-950">
+            Gemini 3.1 Flash Lite (Fast)
           </option>
-          <option value="gemini-4-argon" className="bg-slate-950">
-            gemini-4-argon (Complex Interactive)
+          <option value="gemini-4-argon" className="bg-white dark:bg-slate-950">
+            Gemini 4 Argon (Interactive)
           </option>
-          <option value="gemini-4-carbon" className="bg-slate-950">
-            gemini-4-carbon (Deep Reasoning)
+          <option value="gemini-4-carbon" className="bg-white dark:bg-slate-950">
+            Gemini 4 Carbon (Deep Reasoning)
           </option>
         </select>
       </div>
 
-      {/* Google Search Grounding Toggle */}
+      {/* Google Search Grounding */}
       <button
         type="button"
         data-testid="grounding-search-toggle"
         onClick={() =>
           setGroundingMode((prev) => (prev === 'search' ? 'none' : 'search'))
         }
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
           groundingMode === 'search'
-            ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200'
-            : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-slate-200'
+            ? 'bg-indigo-50 dark:bg-indigo-500/20 border-indigo-300 dark:border-indigo-400/50 text-indigo-700 dark:text-indigo-200'
+            : 'bg-slate-50 dark:bg-white/[0.03] border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
         }`}
       >
-        <Globe className="w-3 h-3" />
-        <span>Google Search</span>
+        <Globe className="w-3.5 h-3.5" />
+        <span>Web Search</span>
       </button>
 
-      {/* Google Maps Grounding Toggle */}
+      {/* Google Maps Grounding */}
       <button
         type="button"
         data-testid="grounding-maps-toggle"
         onClick={() =>
           setGroundingMode((prev) => (prev === 'maps' ? 'none' : 'maps'))
         }
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border transition-colors ${
           groundingMode === 'maps'
-            ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
-            : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-slate-200'
+            ? 'bg-emerald-50 dark:bg-emerald-500/20 border-emerald-300 dark:border-emerald-400/50 text-emerald-700 dark:text-emerald-200'
+            : 'bg-slate-50 dark:bg-white/[0.03] border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
         }`}
       >
-        <MapPin className="w-3 h-3" />
-        <span>Google Maps</span>
+        <MapPin className="w-3.5 h-3.5" />
+        <span>Maps</span>
       </button>
 
-      {/* Live API Voice Conversation Trigger */}
+      {/* Live Voice Trigger */}
       {onOpenVoiceMode && (
         <button
           type="button"
           data-testid="open-live-voice-btn"
           onClick={onOpenVoiceMode}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/35 text-amber-200 transition-colors ml-auto"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 border border-indigo-200 dark:border-indigo-400/35 text-indigo-700 dark:text-indigo-200 transition-colors ml-auto"
         >
-          <Radio className="w-3 h-3 animate-pulse" />
-          <span>Live Voice (gemini-3.8-live)</span>
+          <Radio className="w-3.5 h-3.5" />
+          <span>Live Voice</span>
         </button>
       )}
     </div>
   );
 
-  return (
-    <div className="flex h-[calc(100vh-57px)] max-w-7xl mx-auto px-3 sm:px-6 py-3 gap-5 relative">
-      {/* Glassmorphic Collapsible Sidebar Fetching & Displaying Recent Firestore Chat Sessions */}
-      <UltronHistorySidebar
-        sessions={sessions}
-        activeSessionId={activeSession.id}
-        isOpen={isSidebarOpen}
-        onToggleOpen={setIsSidebarOpen}
-        isMobileOpen={isMobileHistoryOpen}
-        onToggleMobileOpen={setIsMobileHistoryOpen}
-        onSelectSession={setActiveSessionId}
-        onCreateSession={() => handleCreateSession()}
-        onRenameSession={handleRenameSession}
-        onDeleteSession={handleDeleteSession}
-        theme={theme}
-        reducedMotion={reducedMotion}
-        isFirestoreConnected={Boolean(currentUser)}
-        isFetchingFirestore={isFetchingFirestore}
-        lastSyncedLabel={lastSyncedLabel}
-        onRefreshFirestore={handleRefreshFirestoreSessions}
-        onSignInForFirestore={onSignIn}
-      />
+  const renderComposerForm = (variant: 'centered' | 'docked') => (
+    <form
+      data-testid="assistant-breathing-composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSend();
+      }}
+      className={`w-full rounded-2xl bg-white dark:bg-[#12151E] border transition-all duration-200 p-3 sm:p-3.5 text-left ${
+        variant === 'centered'
+          ? 'shadow-[0_12px_36px_-14px_rgba(15,23,42,0.12)] dark:shadow-[0_18px_45px_-15px_rgba(0,0,0,0.65)]'
+          : 'shadow-[0_8px_28px_-10px_rgba(15,23,42,0.1)] dark:shadow-[0_12px_36px_-12px_rgba(0,0,0,0.6)]'
+      } ${
+        isComposerFocused
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-slate-200 dark:border-white/[0.1] hover:border-slate-300 dark:hover:border-white/[0.18]'
+      }`}
+    >
+      {renderComposerControls()}
 
-      {/* Main Assistant Column */}
-      <div className="flex-1 flex flex-col min-w-0 h-full">
-        {/* Subtle Contextual Sub-Bar */}
-        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/[0.05]">
-          <div className="flex items-center gap-2">
-            {!isSidebarOpen && (
-              <button
-                type="button"
-                onClick={() => setIsSidebarOpen(true)}
-                aria-label="Open Conversation History"
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] text-xs text-slate-300 border border-white/[0.07] transition-colors"
-              >
-                <PanelLeftOpen className="w-3.5 h-3.5 text-amber-400" />
-                <span>Recent Sessions</span>
-              </button>
-            )}
+      {attachedDemoFile && (
+        <div className="mb-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 text-xs text-slate-700 dark:text-slate-200">
+          <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+          <span>{attachedDemoFile}</span>
+          <button
+            type="button"
+            onClick={() => setAttachedDemoFile(null)}
+            aria-label="Remove attachment"
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
-            {/* Mobile History Drawer Toggle */}
-            <div className="relative lg:hidden">
-              <button
-                type="button"
-                onClick={() => setIsMobileHistoryOpen((v) => !v)}
-                aria-expanded={isMobileHistoryOpen}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] text-xs text-slate-200 border border-white/10"
-              >
-                <span className="truncate max-w-[150px]">{activeSession.title}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-            </div>
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={textareaRef}
+          data-testid="chat-prompt-input"
+          rows={variant === 'centered' ? 2 : 1}
+          value={input}
+          onFocus={() => setIsComposerFocused(true)}
+          onBlur={() => setIsComposerFocused(false)}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder={
+            groundingMode === 'search'
+              ? 'Ask Ultron anything with live web search…'
+              : groundingMode === 'maps'
+              ? 'Ask Ultron about places, routes, or locations…'
+              : 'Ask Ultron anything…'
+          }
+          disabled={isStreaming}
+          aria-label="Ask Ultron anything"
+          className="flex-1 bg-transparent resize-none px-1 py-1 text-[15px] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed max-h-40"
+        />
+      </div>
 
-            <span
-              data-testid="active-session-header-title"
-              className="hidden sm:inline text-xs text-slate-400 truncate max-w-[220px]"
-            >
-              {activeSession.title}
+      <div className="flex items-center justify-between pt-2.5 mt-1.5 border-t border-slate-100 dark:border-white/[0.06]">
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*,.txt,.md,.json,.ts,.tsx,.py,.pdf"
+            onChange={handleAttachmentSelect}
+            className="hidden"
+            aria-hidden="true"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach file"
+            title="Attach file or audio"
+            className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            data-testid="transcribe-audio-btn"
+            onClick={handleToggleAudioTranscription}
+            aria-label="Voice input"
+            title="Speak and transcribe audio"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              isRecordingAudio || isTranscribingAudio
+                ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-400/40'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+            }`}
+          >
+            <Mic
+              className={`w-3.5 h-3.5 ${
+                isRecordingAudio
+                  ? 'animate-pulse text-rose-500'
+                  : 'text-indigo-600 dark:text-indigo-400'
+              }`}
+            />
+            <span>
+              {isRecordingAudio
+                ? 'Stop'
+                : isTranscribingAudio
+                ? 'Transcribing...'
+                : 'Voice'}
             </span>
-
-            {currentUser ? (
-              <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded">
-                <Database className="w-2.5 h-2.5" />
-                <span>Firestore Synced</span>
-              </span>
-            ) : (
-              onSignIn && (
-                <button
-                  type="button"
-                  onClick={onSignIn}
-                  className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 hover:text-amber-300 bg-white/[0.03] border border-white/10 px-2 py-0.5 rounded transition-colors"
-                >
-                  <Database className="w-2.5 h-2.5" />
-                  <span>Sign in to sync Firestore</span>
-                </button>
-              )
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 text-xs">
-            {onReplayIntro && (
-              <button
-                type="button"
-                onClick={onReplayIntro}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors"
-              >
-                <Play className="w-3 h-3 text-amber-400" />
-                <span>Replay Intro</span>
-              </button>
-            )}
-            {onOpen3DStudio && (
-              <button
-                type="button"
-                onClick={onOpen3DStudio}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors"
-              >
-                <Box className="w-3.5 h-3.5 text-amber-400" />
-                <span>3D Studio</span>
-              </button>
-            )}
-          </div>
+          </button>
         </div>
 
-        {/* Central Scroll Area */}
-        <div className="flex-1 overflow-y-auto py-4 pb-16 md:pb-4 px-1 sm:px-2 lg:pr-64 flex flex-col">
-          {isHomeEmptyState ? (
-            /* Refined AI-Assistant Home Screen */
-            <div className="my-auto py-2 flex flex-col items-center justify-center text-center max-w-2xl mx-auto w-full">
-              <div className="relative flex flex-col items-center">
-                <div
-                  data-testid="assistant-breathing-core"
-                  className={coreBreathe.className}
-                >
-                  {blobStyle === 'iridescent-3d' ? (
-                    <UltronEnergyBlob3D
-                      size={185}
-                      theme={theme}
-                      bloomIntensity={bloomIntensity}
-                      activity={
-                        isStreaming ? 'streaming' : input.trim().length > 0 ? 'typing' : 'idle'
-                      }
-                      interactive={true}
-                      onClick={() => ultronVoiceEngine.speakAboutSelf(true, false)}
-                    />
-                  ) : (
-                    <UltronOrbCanvas
-                      size={185}
-                      state="idle"
-                      theme={theme}
-                      interactive={true}
-                      showBackdropImage={true}
-                    />
-                  )}
-                </div>
+        <button
+          type="submit"
+          data-testid="chat-send-btn"
+          disabled={!input.trim() || isStreaming}
+          aria-label="Send"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs sm:text-sm shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+        >
+          <span>Send</span>
+          <ArrowUp className="w-4 h-4" />
+        </button>
+      </div>
+    </form>
+  );
 
-                {/* Discreet visual core mode toggle & Voice introduction */}
-                <div className="mt-2 flex items-center justify-center gap-2.5 text-[11px] text-slate-500 whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => setBlobStyle('iridescent-3d')}
-                    className={`whitespace-nowrap shrink-0 transition-colors ${
-                      blobStyle === 'iridescent-3d'
-                        ? 'text-slate-200 font-medium'
-                        : 'hover:text-slate-300'
-                    }`}
-                  >
-                    3D Iridescent Core
-                  </button>
-                  <span aria-hidden="true">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setBlobStyle('reference-orb')}
-                    className={`whitespace-nowrap shrink-0 transition-colors ${
-                      blobStyle === 'reference-orb'
-                        ? 'text-slate-200 font-medium'
-                        : 'hover:text-slate-300'
-                    }`}
-                  >
-                    Reference Matrix
-                  </button>
-                  <span aria-hidden="true">·</span>
-                  <button
-                    type="button"
+  return (
+    <div className="flex flex-col h-full w-full overflow-hidden">
+      {/* Main Scrollable Chat Container */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6"
+      >
+        {isHomeEmptyState ? (
+          /* Calm, Balanced Empty State / Landing Screen */
+          <div className="min-h-full flex flex-col items-center justify-center max-w-3xl mx-auto py-4">
+            {/* Interactive 3D Ultron Core + Subtle Toggle */}
+            <div className="flex flex-col items-center">
+              <div
+                data-testid="assistant-breathing-core"
+                className={coreBreathe.className}
+              >
+                {blobStyle === 'iridescent-3d' ? (
+                  <UltronEnergyBlob3D
+                    size={136}
+                    theme={mapThemeTo3D(theme)}
+                    bloomIntensity={bloomIntensity}
+                    activity={
+                      isStreaming ? 'streaming' : input.trim().length > 0 ? 'typing' : 'idle'
+                    }
+                    interactive={true}
                     onClick={() => ultronVoiceEngine.speakAboutSelf(true, false)}
-                    className="whitespace-nowrap shrink-0 text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1 font-medium"
-                    title="Ask Ultron to speak about himself"
-                  >
-                    <Volume2 className="w-3 h-3" />
-                    <span>Introduce Ultron</span>
-                  </button>
-                </div>
-
-                {voiceState.isSpeaking && (
-                  <div className="mt-3.5 px-4 py-2 rounded-full bg-slate-950/90 border border-amber-500/40 shadow-[0_0_24px_rgba(245,158,11,0.22)] flex items-center gap-3 max-w-lg animate-fade-in pointer-events-auto">
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="w-1 h-3.5 bg-amber-400 rounded-full animate-pulse" />
-                      <span className="w-1 h-5 bg-amber-300 rounded-full animate-pulse [animation-delay:150ms]" />
-                      <span className="w-1 h-2.5 bg-cyan-400 rounded-full animate-pulse [animation-delay:300ms]" />
-                    </div>
-                    <p className="text-xs text-amber-200 font-mono text-left truncate flex-1">
-                      <span className="text-amber-400 font-semibold uppercase tracking-wider text-[10px] mr-1">Ultron:</span>
-                      &ldquo;{voiceState.text}&rdquo;
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => ultronVoiceEngine.stop()}
-                      className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10 shrink-0 transition-colors"
-                      title="Mute / Stop speech"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
+                  />
+                ) : (
+                  <UltronOrbCanvas
+                    size={136}
+                    state="idle"
+                    theme={mapThemeTo3D(theme)}
+                    interactive={true}
+                    showBackdropImage={true}
+                  />
                 )}
               </div>
 
-              <h1
-                style={{ textWrap: 'balance' }}
-                className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-100 mt-4"
-              >
-                What would you like to build?
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md leading-relaxed">
-                Multi-turn Gemini intelligence with Firestore session history, Google Search &amp; Maps grounding, and Live Voice.
-              </p>
-
-              {/* Prompt Composer */}
-              <div className="w-full mt-5">
-                <form
-                  data-testid="assistant-breathing-composer"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleSend();
-                  }}
-                  className={`w-full rounded-2xl bg-[#0a0c14]/90 border transition-all duration-200 p-3 text-left shadow-[0_16px_40px_-12px_rgba(0,0,0,0.65)] ${
-                    isComposerFocused
-                      ? 'border-amber-400/45 ring-1 ring-amber-400/20'
-                      : 'border-white/[0.09] hover:border-white/[0.15]'
+              <div className="mt-1.5 flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => setBlobStyle('iridescent-3d')}
+                  className={`transition-colors ${
+                    blobStyle === 'iridescent-3d'
+                      ? 'text-slate-900 dark:text-slate-200 font-medium'
+                      : 'hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
                 >
-                  {renderGroundingToolbar()}
-
-                  {attachedDemoFile && (
-                    <div className="mb-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.05] border border-white/10 text-xs text-slate-200">
-                      <Paperclip className="w-3 h-3 text-amber-400" />
-                      <span>{attachedDemoFile}</span>
-                      <button
-                        type="button"
-                        onClick={() => setAttachedDemoFile(null)}
-                        aria-label="Remove attachment"
-                        className="text-slate-400 hover:text-white"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-
-                  <textarea
-                    ref={textareaRef}
-                    data-testid="chat-prompt-input"
-                    rows={1}
-                    value={input}
-                    onFocus={() => setIsComposerFocused(true)}
-                    onBlur={() => setIsComposerFocused(false)}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder={
-                      groundingMode === 'search'
-                        ? 'Ask a live question grounded with Google Search (gemini-4-hydrogen)...'
-                        : groundingMode === 'maps'
-                        ? 'Search places, labs, or directions grounded with Google Maps (gemini-4-hydrogen)...'
-                        : 'Describe an architecture, research question, or component to build...'
-                    }
-                    aria-label="Prompt input"
-                    className="w-full bg-transparent resize-none text-sm text-slate-100 placeholder-slate-500 focus:outline-none leading-relaxed max-h-40"
-                  />
-
-                  <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/[0.05]">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="audio/*,.txt,.md,.json,.ts,.tsx,.py,.pdf"
-                        onChange={handleAttachmentSelect}
-                        className="hidden"
-                        aria-hidden="true"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        aria-label="Attach file or audio"
-                        title="Attach file or upload audio for gemini-3.5-transcribe"
-                        className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.05] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        data-testid="transcribe-audio-btn"
-                        onClick={handleToggleAudioTranscription}
-                        aria-label="Transcribe microphone audio"
-                        title="Record and transcribe audio with gemini-3.5-transcribe"
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${
-                          isRecordingAudio || isTranscribingAudio
-                            ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
-                            : 'text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10'
-                        }`}
-                      >
-                        <Mic
-                          className={`w-3.5 h-3.5 ${
-                            isRecordingAudio ? 'animate-pulse text-rose-400' : 'text-amber-400'
-                          }`}
-                        />
-                        <span>
-                          {isRecordingAudio
-                            ? 'Stop & Transcribe'
-                            : isTranscribingAudio
-                            ? 'Transcribing...'
-                            : 'Transcribe Mic'}
-                        </span>
-                      </button>
-                    </div>
-
-                    <button
-                      type="submit"
-                      data-testid="chat-send-btn"
-                      disabled={!input.trim() || isStreaming}
-                      aria-label="Send prompt"
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-35 text-slate-950 font-semibold text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-                    >
-                      <span>Send</span>
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </form>
-
-                {statusNotice && (
-                  <p
-                    data-testid="chat-status-notice"
-                    className="text-[11px] text-amber-300/90 mt-2 text-left px-1"
-                  >
-                    {statusNotice}
-                  </p>
-                )}
-
-                {/* Suggestion Chips Beneath the Composer */}
-                <div
-                  aria-label="Suggested prompts"
-                  className="mt-4 flex flex-wrap items-center justify-center gap-2"
+                  3D Core
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setBlobStyle('reference-orb')}
+                  className={`transition-colors ${
+                    blobStyle === 'reference-orb'
+                      ? 'text-slate-900 dark:text-slate-200 font-medium'
+                      : 'hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
                 >
-                  {suggestionChips.map((chip, idx) => (
+                  Orb
+                </button>
+                {onOpen3DStudio && (
+                  <>
+                    <span aria-hidden="true">·</span>
                     <button
-                      key={idx}
                       type="button"
-                      data-testid={`suggestion-chip-${idx}`}
-                      onClick={() => handleSend(chip.prompt, chip.mode)}
-                      className="px-3 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.07] hover:border-white/[0.15] text-xs text-slate-300 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                      onClick={onOpen3DStudio}
+                      className="hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
                     >
-                      {chip.label}
+                      3D Studio
                     </button>
-                  ))}
-                </div>
+                  </>
+                )}
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => ultronVoiceEngine.speakAboutSelf(true, false)}
+                  className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium transition-colors"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>Voice intro</span>
+                </button>
               </div>
-            </div>
-          ) : (
-            /* Active Conversation Thread */
-            <div className="space-y-6 max-w-3xl mx-auto w-full pb-4">
-              {messages.map((msg) => {
-                const isAssistant = msg.role === 'assistant';
-                return (
-                  <div
-                    key={msg.id}
-                    data-testid={`chat-message-${msg.role}`}
-                    className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}
-                  >
-                    <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-400 tabular-nums">
-                      <span className="font-medium text-slate-200">
-                        {isAssistant ? 'Ultron' : 'You'}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{msg.timestamp}</span>
-                      {isAssistant && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="text-slate-500 font-mono text-[11px]">
-                            {msg.model || selectedModel}
-                          </span>
-                        </>
-                      )}
-                    </div>
 
+              {voiceState.isSpeaking && (
+                <div className="mt-3 px-4 py-2 rounded-full bg-white dark:bg-[#12151E] border border-indigo-200 dark:border-indigo-500/40 shadow-md flex items-center gap-3 max-w-md">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="w-1 h-3 bg-indigo-500 rounded-full animate-pulse" />
+                    <span className="w-1 h-4 bg-indigo-400 rounded-full animate-pulse [animation-delay:150ms]" />
+                    <span className="w-1 h-2.5 bg-indigo-500 rounded-full animate-pulse [animation-delay:300ms]" />
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-200 truncate flex-1">
+                    &ldquo;{voiceState.text}&rdquo;
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => ultronVoiceEngine.stop()}
+                    aria-label="Stop speech"
+                    className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Welcome Heading & Subtitle */}
+            <div className="text-center mt-4 mb-6">
+              <h1
+                style={{ textWrap: 'balance' }}
+                className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 dark:text-white"
+              >
+                Meet Ultron
+              </h1>
+              <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-2 max-w-xl mx-auto leading-relaxed">
+                Your intelligent AI assistant for ideas, writing, coding, research, and more.
+              </p>
+            </div>
+
+            {/* Centered Rounded Composer */}
+            <div className="w-full">
+              {renderComposerForm('centered')}
+
+              {statusNotice && (
+                <p
+                  data-testid="chat-status-notice"
+                  className="text-xs text-indigo-600 dark:text-indigo-300 mt-2.5 px-1"
+                >
+                  {statusNotice}
+                </p>
+              )}
+            </div>
+
+            {/* 6 Balanced Suggested Prompt Cards */}
+            <div
+              aria-label="Suggested prompts"
+              className="w-full mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+            >
+              {promptCards.map((card, idx) => {
+                const Icon = card.icon;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    data-testid={`suggestion-chip-${idx}`}
+                    onClick={() => handleSend(card.prompt, card.mode)}
+                    className="group p-4 rounded-2xl bg-white dark:bg-[#12151E] border border-slate-200/90 dark:border-white/[0.08] hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:shadow-md dark:hover:bg-[#171B26] text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 mb-1.5">
+                      <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                        <Icon className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {card.title}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {card.subtitle}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Active Chat Conversation */
+          <div className="max-w-3xl mx-auto w-full space-y-6 pb-4">
+            {messages.map((msg, msgIdx) => {
+              const isAssistant = msg.role === 'assistant';
+              const isRevealingThis = isAssistant && revealingMessageId === msg.id;
+              const liquidAccent = getLiquidGlassAccentConfig(theme);
+              const isEditingThis = !isAssistant && editingMsgId === msg.id;
+              const feedback = feedbackByMsg[msg.id] || null;
+
+              return (
+                <div
+                  key={msg.id}
+                  data-testid={`chat-message-${msg.role}`}
+                  data-revealing={isRevealingThis ? 'true' : 'false'}
+                  className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}
+                >
+                  {/* Sender Header */}
+                  <div className="flex items-center gap-2 mb-1.5 px-1 text-xs text-slate-500 dark:text-slate-400">
+                    {isAssistant && <UltronLogoMark size={18} />}
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {isAssistant ? 'Ultron' : 'You'}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span className="tabular-nums">{msg.timestamp}</span>
+                    {isAssistant && msg.model && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                          {msg.model}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Message Bubble / Card */}
+                  {isAssistant ? (
                     <div
-                      className={`max-w-2xl rounded-2xl p-4 md:p-5 text-sm leading-relaxed ${
-                        isAssistant
-                          ? 'bg-[#0a0c14]/90 text-slate-100 border border-white/[0.08]'
-                          : 'bg-white/[0.08] text-white border border-white/[0.12]'
+                      className={`w-full rounded-2xl p-4 sm:p-5 liquid-glass-response ${
+                        isRevealingThis
+                          ? `liquid-glass-response-active ultron-liquid-sheen ${liquidAccent.activeBorderClass}`
+                          : ''
                       }`}
                     >
-                      {isAssistant && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
-                        <div className="mb-3.5 pb-2.5 border-b border-white/[0.07]">
+                      {msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
+                        <div className="mb-3 pb-2.5 border-b border-slate-200/80 dark:border-white/[0.07]">
                           <button
                             type="button"
                             onClick={() => toggleThinking(msg.id)}
-                            className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                           >
-                            <span>Reasoning steps ({msg.thinkingSteps.length})</span>
+                            <span>Reasoning details ({msg.thinkingSteps.length})</span>
                             {expandedThinking[msg.id] ? (
                               <ChevronUp className="w-3.5 h-3.5" />
                             ) : (
@@ -1507,7 +1466,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           </button>
 
                           {expandedThinking[msg.id] && (
-                            <div className="mt-2 space-y-1 pl-3 border-l border-white/15 text-xs text-slate-400 font-mono">
+                            <div className="mt-2 space-y-1 pl-3 border-l-2 border-indigo-200 dark:border-indigo-500/30 text-xs text-slate-500 dark:text-slate-400 font-mono">
                               {msg.thinkingSteps.map((step, sIdx) => (
                                 <div key={sIdx}>{step}</div>
                               ))}
@@ -1516,229 +1475,272 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         </div>
                       )}
 
-                      {isAssistant ? (
-                        <SimpleMessageRenderer content={msg.content} />
-                      ) : (
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      <TypewriterLiquidMessage
+                        content={msg.content}
+                        isRevealing={isRevealingThis}
+                        reducedMotion={reducedMotion}
+                        theme={theme}
+                        onRevealComplete={() =>
+                          setRevealingMessageId((curr) =>
+                            curr === msg.id ? null : curr
+                          )
+                        }
+                      />
+
+                      {/* Verified Grounding Citations */}
+                      {msg.groundingSources && msg.groundingSources.length > 0 && (
+                        <div
+                          data-testid="grounding-sources-list"
+                          className="mt-4 pt-3 border-t border-slate-200 dark:border-white/10 space-y-2"
+                        >
+                          <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                            {msg.groundingSources.some((s) => s.type === 'maps') ? (
+                              <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                            )}
+                            <span>Sources</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {msg.groundingSources.map((src, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs space-y-1"
+                              >
+                                <a
+                                  href={src.uri}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-indigo-600 dark:text-indigo-300 hover:underline flex items-center justify-between gap-1.5"
+                                >
+                                  <span className="truncate">{src.title}</span>
+                                  <ExternalLink className="w-3 h-3 shrink-0" />
+                                </a>
+                                {src.reviewSnippets &&
+                                  src.reviewSnippets.map((rev, rIdx) => (
+                                    <p
+                                      key={rIdx}
+                                      className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2"
+                                    >
+                                      &ldquo;{rev}&rdquo;
+                                    </p>
+                                  ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
 
-                      {/* Grounding Citations (Google Search & Google Maps URLs + Review Snippets) */}
-                      {isAssistant &&
-                        msg.groundingSources &&
-                        msg.groundingSources.length > 0 && (
-                          <div
-                            data-testid="grounding-sources-list"
-                            className="mt-4 pt-3 border-t border-white/10 space-y-2"
+                      {/* Clear Assistant Action Bar */}
+                      <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-white/[0.07] flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(msg.id, msg.content)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white transition-colors"
                           >
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                              {msg.groundingSources.some((s) => s.type === 'maps') ? (
-                                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : (
-                                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                              )}
-                              <span>Verified Grounding Sources</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {msg.groundingSources.map((src, sIdx) => (
-                                <div
-                                  key={sIdx}
-                                  className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs space-y-1"
-                                >
-                                  <a
-                                    href={src.uri}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-medium text-amber-300 hover:text-amber-200 flex items-center justify-between gap-1.5 underline decoration-amber-400/40"
-                                  >
-                                    <span className="truncate">{src.title}</span>
-                                    <ExternalLink className="w-3 h-3 shrink-0" />
-                                  </a>
-                                  {src.reviewSnippets &&
-                                    src.reviewSnippets.map((rev, rIdx) => (
-                                      <p
-                                        key={rIdx}
-                                        className="text-[11px] text-slate-400 italic line-clamp-2"
-                                      >
-                                        &ldquo;{rev}&rdquo;
-                                      </p>
-                                    ))}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                      {isAssistant && (
-                        <div className="mt-4 pt-3 border-t border-white/[0.07] flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(msg.id, msg.content)}
-                              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/[0.05] hover:text-white transition-colors"
-                            >
-                              {copiedId === msg.id ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                              <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => ultronVoiceEngine.triggerBlobTapSpeech()}
-                              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/[0.05] hover:text-white transition-colors"
-                            >
-                              <Volume2 className="w-3.5 h-3.5" />
-                              <span>Vocalize</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleSend(msg.content.slice(0, 50))}
-                              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/[0.05] hover:text-white transition-colors"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5" />
-                              <span>Regenerate</span>
-                            </button>
-                          </div>
+                            {copiedId === msg.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                            <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
+                          </button>
 
                           <button
                             type="button"
-                            onClick={() => onBranchToCoding(msg.content)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 border border-white/10 transition-colors font-medium text-xs"
+                            onClick={() => handleRegenerateFromMessage(msgIdx)}
+                            disabled={isStreaming}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white disabled:opacity-40 transition-colors"
                           >
-                            <Code2 className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Open in Coding Agent</span>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Regenerate</span>
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleShare(msg.id, msg.content)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white transition-colors"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>{sharedId === msg.id ? 'Shared' : 'Share'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => ultronVoiceEngine.triggerBlobTapSpeech()}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white transition-colors"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>Listen</span>
+                          </button>
+
+                          <div className="inline-flex items-center border-l border-slate-200 dark:border-white/10 pl-1.5 ml-1 gap-0.5">
+                            <button
+                              type="button"
+                              aria-label="Helpful response"
+                              onClick={() =>
+                                setFeedbackByMsg((prev) => ({
+                                  ...prev,
+                                  [msg.id]: prev[msg.id] === 'up' ? null : 'up',
+                                }))
+                              }
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                feedback === 'up'
+                                  ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : 'hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Needs improvement"
+                              onClick={() =>
+                                setFeedbackByMsg((prev) => ({
+                                  ...prev,
+                                  [msg.id]: prev[msg.id] === 'down' ? null : 'down',
+                                }))
+                              }
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                feedback === 'down'
+                                  ? 'bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                  : 'hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onBranchToCoding(msg.content)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.1] text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 transition-colors font-medium text-xs"
+                        >
+                          <Code2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Coding Agent</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Right-Aligned User Message Bubble */
+                    <div className="group flex flex-col items-end max-w-[90%] sm:max-w-xl">
+                      {isEditingThis ? (
+                        <div className="w-full min-w-[260px] sm:min-w-[380px] rounded-2xl bg-white dark:bg-[#12151E] border border-indigo-500 p-3 shadow-md space-y-2">
+                          <textarea
+                            rows={2}
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            className="w-full bg-transparent text-sm text-slate-900 dark:text-white resize-none focus:outline-none"
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingMsgId(null)}
+                              className="px-3 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditedPrompt(msg.content)}
+                              className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
+                            >
+                              Save &amp; Send
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="rounded-2xl rounded-tr-sm px-4 py-3 bg-indigo-600 text-white shadow-sm text-[15px] leading-relaxed whitespace-pre-wrap">
+                            {msg.content}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingMsgId(msg.id);
+                                setEditingText(msg.content);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/[0.06]"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(msg.id, msg.content)}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/[0.06]"
+                            >
+                              {copiedId === msg.id ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                              <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
-                  </div>
-                );
-              })}
-
-              {isStreaming && (
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-400">
-                    <span className="font-medium text-amber-300">
-                      Ultron · Synthesizing with {selectedModel}...
-                    </span>
-                  </div>
-                  <div className="max-w-2xl rounded-2xl p-4 md:p-5 text-sm leading-relaxed bg-[#0a0c14]/90 text-slate-100 border border-amber-500/30">
-                    {streamingContent ? (
-                      <SimpleMessageRenderer content={streamingContent} />
-                    ) : (
-                      <span className="text-xs font-mono text-slate-400 animate-pulse">
-                        Executing neural directive...
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
-              )}
+              );
+            })}
 
-              <div ref={chatEndRef} />
-            </div>
-          )}
-        </div>
+            {/* Generating / Typing Indicator */}
+            {isStreaming && (
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-2 mb-1.5 px-1 text-xs text-slate-500 dark:text-slate-400">
+                  <UltronLogoMark size={18} />
+                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                    Ultron is thinking…
+                  </span>
+                </div>
+                <div className="w-full rounded-2xl p-4 sm:p-5 liquid-glass-response liquid-glass-response-active ultron-liquid-sheen">
+                  {streamingContent ? (
+                    <SimpleMessageRenderer
+                      content={streamingContent}
+                      isTyping={true}
+                      theme={theme}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" />
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:150ms]" />
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:300ms]" />
+                      </span>
+                      <span>Generating response…</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
-        {/* Bottom Docked Composer when in an active conversation thread */}
-        {!isHomeEmptyState && (
-          <div className="pt-2 max-w-3xl mx-auto w-full">
+            <div ref={chatEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Fixed Bottom Input Bar in Active Conversation */}
+      {!isHomeEmptyState && (
+        <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2 bg-gradient-to-t from-[#F8F9FB] via-[#F8F9FB]/95 to-transparent dark:from-[#0B0D12] dark:via-[#0B0D12]/95 shrink-0">
+          <div className="max-w-3xl mx-auto">
             {statusNotice && (
               <p
                 data-testid="chat-status-notice"
-                className="text-[11px] text-amber-300/90 mb-1.5 px-1"
+                className="text-xs text-indigo-600 dark:text-indigo-300 mb-2 px-1"
               >
                 {statusNotice}
               </p>
             )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className={`rounded-2xl bg-[#0a0c14]/95 p-2.5 border transition-all ${
-                isComposerFocused
-                  ? 'border-amber-400/45 ring-1 ring-amber-400/20'
-                  : 'border-white/[0.1]'
-              }`}
-            >
-              {renderGroundingToolbar()}
-
-              {attachedDemoFile && (
-                <div className="mb-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.05] border border-white/10 text-xs text-slate-200">
-                  <Paperclip className="w-3 h-3 text-amber-400" />
-                  <span>{attachedDemoFile}</span>
-                  <button
-                    type="button"
-                    onClick={() => setAttachedDemoFile(null)}
-                    aria-label="Remove attachment"
-                    className="text-slate-400 hover:text-white"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Attach file or audio"
-                  className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.05] transition-colors"
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  data-testid="transcribe-audio-btn"
-                  onClick={handleToggleAudioTranscription}
-                  aria-label="Transcribe microphone audio"
-                  className={`p-2 rounded-lg transition-colors ${
-                    isRecordingAudio || isTranscribingAudio
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.05]'
-                  }`}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
-
-                <textarea
-                  ref={textareaRef}
-                  data-testid="chat-prompt-input"
-                  rows={1}
-                  value={input}
-                  onFocus={() => setIsComposerFocused(true)}
-                  onBlur={() => setIsComposerFocused(false)}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Follow up or ask Ultron to build..."
-                  disabled={isStreaming}
-                  className="flex-1 bg-transparent resize-none px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none max-h-36"
-                />
-
-                <button
-                  type="submit"
-                  data-testid="chat-send-btn"
-                  disabled={!input.trim() || isStreaming}
-                  aria-label="Send prompt"
-                  className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-35 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition-all"
-                >
-                  <span>Send</span>
-                  <ArrowUp className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </form>
+            {renderComposerForm('docked')}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -21,20 +21,21 @@ interface UltronSystemVitalsPanelProps {
   reducedMotion?: boolean;
 }
 
-const PANEL_WIDTH = 256;
+const PANEL_WIDTH_EXPANDED = 240;
+const PANEL_WIDTH_COLLAPSED = 164;
 const PANEL_HEIGHT_EXPANDED = 178;
-const PANEL_HEIGHT_COLLAPSED = 42;
+const PANEL_HEIGHT_COLLAPSED = 64;
 
 export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = ({
-  theme = 'amber',
+  theme = 'indigo',
   reducedMotion = false,
 }) => {
   const [tick, setTick] = useState(1);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isBoosted, setIsBoosted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // null position means docked in its default bottom-right corner;
+  // null position means docked in its default corner;
   // once dragged, stores viewport-clamped { x, y } coordinates
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -56,13 +57,14 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
   useEffect(() => {
     if (!position) return;
     const handleResize = () => {
+      const w = isExpanded ? PANEL_WIDTH_EXPANDED : PANEL_WIDTH_COLLAPSED;
       const h = isExpanded ? PANEL_HEIGHT_EXPANDED : PANEL_HEIGHT_COLLAPSED;
       setPosition((prev) =>
         prev
           ? clampFloatingPosition(
               prev.x,
               prev.y,
-              PANEL_WIDTH,
+              w,
               h,
               window.innerWidth,
               window.innerHeight
@@ -98,12 +100,13 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
     if (!isDragging) return;
     const nextX = e.clientX - dragOffsetRef.current.offsetX;
     const nextY = e.clientY - dragOffsetRef.current.offsetY;
+    const panelWidth = isExpanded ? PANEL_WIDTH_EXPANDED : PANEL_WIDTH_COLLAPSED;
     const panelHeight = isExpanded ? PANEL_HEIGHT_EXPANDED : PANEL_HEIGHT_COLLAPSED;
 
     const clamped = clampFloatingPosition(
       nextX,
       nextY,
-      PANEL_WIDTH,
+      panelWidth,
       panelHeight,
       window.innerWidth,
       window.innerHeight
@@ -138,7 +141,9 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
     .join(' ');
 
   const strokeColor =
-    theme === 'cyan'
+    theme === 'indigo'
+      ? '#6366f1'
+      : theme === 'cyan'
       ? '#22d3ee'
       : theme === 'violet'
       ? '#a78bfa'
@@ -157,9 +162,11 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
             }
           : undefined
       }
-      className={`fixed z-30 w-60 select-none rounded-2xl bg-[#070910]/90 backdrop-blur-xl border border-white/[0.09] shadow-[0_18px_42px_-10px_rgba(0,0,0,0.75)] text-slate-200 transition-shadow ${
-        position ? '' : 'top-[104px] right-4 md:right-5'
-      } ${isDragging ? 'ring-1 ring-amber-400/50 cursor-grabbing' : ''}`}
+      className={`hidden xl:block fixed z-30 select-none rounded-2xl bg-white/95 dark:bg-[#12151E]/95 backdrop-blur-xl border border-slate-200 dark:border-white/[0.09] shadow-lg dark:shadow-[0_18px_42px_-10px_rgba(0,0,0,0.75)] text-slate-700 dark:text-slate-200 transition-all duration-200 ${
+        isExpanded ? 'w-60' : 'w-[164px]'
+      } ${position ? '' : 'top-[68px] right-3'} ${
+        isDragging ? 'ring-2 ring-indigo-500/40 cursor-grabbing' : ''
+      }`}
     >
       {/* Draggable Header Bar */}
       <div
@@ -168,26 +175,26 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         data-testid="system-vitals-drag-handle"
-        className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] cursor-grab active:cursor-grabbing touch-none"
+        className="flex items-center justify-between px-2.5 py-2 border-b border-slate-200/80 dark:border-white/[0.06] cursor-grab active:cursor-grabbing touch-none"
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <GripHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+        <div className="flex items-center gap-1.5 min-w-0">
+          <GripHorizontal className="w-3 h-3 text-slate-400 shrink-0" />
           <Activity
             className={`w-3.5 h-3.5 shrink-0 ${statusTheme.accentIconClass} ${breatheCfg.className}`}
           />
-          <span className="text-[11px] font-semibold tracking-wide text-slate-100 truncate">
-            System Vitals
+          <span className="text-[11px] font-semibold tracking-wide text-slate-800 dark:text-slate-100 truncate">
+            Vitals
           </span>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           {position && (
             <button
               type="button"
               onClick={() => setPosition(null)}
               aria-label="Reset vitals panel position"
               title="Reset to default corner"
-              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.07] transition-colors"
+              className="p-1 rounded-md text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07] transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
             </button>
@@ -197,7 +204,7 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
             onClick={() => setIsExpanded((prev) => !prev)}
             aria-label={isExpanded ? 'Minimize system vitals' : 'Expand system vitals'}
             aria-expanded={isExpanded}
-            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.07] transition-colors"
+            className="p-1 rounded-md text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07] transition-colors"
           >
             {isExpanded ? (
               <Minimize2 className="w-3 h-3" />
@@ -214,15 +221,15 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
           {/* Row 1: Memory Usage + Bar */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-400 font-sans">
-                <Cpu className="w-3 h-3 text-slate-400" />
+              <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-sans">
+                <Cpu className="w-3 h-3" />
                 <span>Memory</span>
               </span>
-              <span className="text-slate-100 font-medium" data-testid="vitals-memory-value">
+              <span className="text-slate-900 dark:text-slate-100 font-medium" data-testid="vitals-memory-value">
                 {vitals.memoryUsedGb.toFixed(1)} / {vitals.memoryTotalGb.toFixed(0)} GB ({vitals.memoryPercent}%)
               </span>
             </div>
-            <div className="w-full h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
+            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/[0.07] overflow-hidden">
               <div
                 style={{ width: `${vitals.memoryPercent}%` }}
                 className={`h-full rounded-full transition-all duration-500 ${statusTheme.accentBarClass}`}
@@ -233,16 +240,16 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
           {/* Row 2: Active Network Activity + Live Sparkline */}
           <div className="space-y-1 pt-0.5">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-400 font-sans">
-                <Wifi className="w-3 h-3 text-slate-400" />
+              <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-sans">
+                <Wifi className="w-3 h-3" />
                 <span>Network I/O</span>
               </span>
-              <span className="text-slate-100 font-medium" data-testid="vitals-network-value">
+              <span className="text-slate-900 dark:text-slate-100 font-medium" data-testid="vitals-network-value">
                 ↓ {vitals.networkDownMbps} · ↑ {vitals.networkUpMbps} Mbps
               </span>
             </div>
 
-            <div className="h-7 w-full rounded-lg bg-white/[0.03] border border-white/[0.05] px-1.5 flex items-center">
+            <div className="h-7 w-full rounded-lg bg-slate-100 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.05] px-1.5 flex items-center">
               <svg
                 viewBox="0 0 100 28"
                 className="w-full h-5 overflow-visible"
@@ -261,7 +268,7 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
           </div>
 
           {/* Row 3: Neural Core Load & Latency + Interactive Burst Toggle */}
-          <div className="pt-1 border-t border-white/[0.06] flex items-center justify-between text-[10px] text-slate-400">
+          <div className="pt-1 border-t border-slate-200 dark:border-white/[0.06] flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
             <span>
               Core {vitals.neuralLoadPercent}% · {vitals.latencyMs} ms
             </span>
@@ -271,7 +278,7 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
               className={`px-1.5 py-0.5 rounded font-sans font-medium transition-colors ${
                 isBoosted
                   ? `${statusTheme.bgColorClass} ${statusTheme.textColorClass} border ${statusTheme.borderColorClass}`
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.05]'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.05]'
               }`}
             >
               {isBoosted ? 'Burst Active' : 'Simulate Load'}
@@ -279,12 +286,10 @@ export const UltronSystemVitalsPanel: React.FC<UltronSystemVitalsPanelProps> = (
           </div>
         </div>
       ) : (
-        <div className="px-3 py-1.5 flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-300">
+        <div className="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
           <span>Mem {vitals.memoryPercent}%</span>
           <span aria-hidden="true">·</span>
-          <span>↓ {vitals.networkDownMbps} Mbps</span>
-          <span aria-hidden="true">·</span>
-          <span>{vitals.latencyMs} ms</span>
+          <span>{vitals.latencyMs}ms</span>
         </div>
       )}
     </aside>

@@ -1,20 +1,45 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
-  Palette,
-  Sliders,
+  User as UserIcon,
+  Sun,
+  Moon,
+  Monitor,
   Cpu,
-  Volume2,
+  History,
+  Plug,
+  ShieldCheck,
+  HelpCircle,
   Check,
   RotateCcw,
   Sparkles,
+  Database,
+  RefreshCw,
+  LogOut,
+  LogIn,
+  Trash2,
 } from 'lucide-react';
+import type { User } from '../lib/firebase';
+import {
+  type UltronTheme,
+  type AppearanceMode,
+} from '../utils/ultronLogic';
+
+export type SettingsSectionId =
+  | 'profile'
+  | 'appearance'
+  | 'ai'
+  | 'history'
+  | 'integrations'
+  | 'privacy';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  theme: 'amber' | 'cyan' | 'violet';
-  onSelectTheme: (theme: 'amber' | 'cyan' | 'violet') => void;
+  theme: UltronTheme;
+  onSelectTheme: (theme: UltronTheme) => void;
+  appearanceMode: AppearanceMode;
+  onSelectAppearanceMode: (mode: AppearanceMode) => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
   reducedMotion: boolean;
@@ -26,6 +51,14 @@ interface SettingsModalProps {
   onReplayIntro: () => void;
   bloomIntensity: number;
   onChangeBloomIntensity: (value: number) => void;
+  currentUser?: User | null;
+  onSignIn?: () => Promise<void> | void;
+  onSignOut?: () => Promise<void> | void;
+  sessionCount?: number;
+  onRefreshHistory?: () => void;
+  onClearLocalHistory?: () => void;
+  onOpenHelp?: () => void;
+  initialTab?: SettingsSectionId;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -33,8 +66,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   theme,
   onSelectTheme,
-  isDarkMode,
-  onToggleDarkMode,
+  appearanceMode,
+  onSelectAppearanceMode,
   reducedMotion,
   onToggleReducedMotion,
   soundEnabled,
@@ -44,271 +77,707 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onReplayIntro,
   bloomIntensity,
   onChangeBloomIntensity,
+  currentUser = null,
+  onSignIn,
+  onSignOut,
+  sessionCount = 0,
+  onRefreshHistory,
+  onClearLocalHistory,
+  onOpenHelp,
+  initialTab = 'appearance',
 }) => {
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(initialTab);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const [geminiConfigured, setGeminiConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveSection(initialTab);
+      setConfirmClear(false);
+    }
+  }, [isOpen, initialTab]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/gemini/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.configured === 'boolean') {
+          setGeminiConfigured(d.configured);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const sections: Array<{
+    id: SettingsSectionId;
+    label: string;
+    icon: React.FC<{ className?: string }>;
+  }> = [
+    { id: 'profile', label: 'Profile', icon: UserIcon },
+    { id: 'appearance', label: 'Appearance', icon: Sun },
+    { id: 'ai', label: 'AI Preferences', icon: Cpu },
+    { id: 'history', label: 'Chat History', icon: History },
+    { id: 'integrations', label: 'Integrations', icon: Plug },
+    { id: 'privacy', label: 'Privacy & Help', icon: ShieldCheck },
+  ];
 
   const models = [
     {
       id: 'gemini-4-hydrogen',
       name: 'Gemini 4 Hydrogen',
-      tag: 'General · Free Key',
-      desc: 'Default multimodal intelligence with live Google Search and Google Maps grounding.',
+      tag: 'Balanced · Default',
+      desc: 'Great everyday assistant for writing, research, search, and coding.',
     },
     {
       id: 'gemini-3.1-flash-lite',
       name: 'Gemini 3.1 Flash Lite',
-      tag: 'High Speed · Free Key',
-      desc: 'Ultra-low latency streaming synthesis optimized for high-frequency interactive chat.',
+      tag: 'Fast',
+      desc: 'Quickest response times for everyday questions and drafting.',
     },
     {
       id: 'gemini-4-argon',
       name: 'Gemini 4 Argon',
-      tag: 'Complex Interactive',
-      desc: 'Advanced multi-turn coding and interactive system design (with Free-Key fallback).',
+      tag: 'Interactive',
+      desc: 'Strong multi-turn context for longer coding and design tasks.',
     },
     {
       id: 'gemini-4-carbon',
       name: 'Gemini 4 Carbon',
       tag: 'Deep Reasoning',
-      desc: 'Maximum architectural reasoning depth and mathematical analysis (with Free-Key fallback).',
+      desc: 'Best for complex analysis, planning, and technical architecture.',
     },
   ];
 
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/55 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg glass-panel rounded-2xl border border-white/15 p-6 shadow-2xl text-white max-h-[90vh] overflow-y-auto"
+        data-testid="settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="w-full max-w-3xl bg-white dark:bg-[#12151E] rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xl text-slate-900 dark:text-slate-100 overflow-hidden flex flex-col max-h-[88vh]"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <Sliders className="w-5 h-5 text-amber-400" />
-            <h2 className="text-base font-bold tracking-wide">System Preferences</h2>
-          </div>
+        {/* Top Modal Header */}
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-white/[0.08] shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">
+            Settings
+          </h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close Settings"
-            className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Section 1: Color Palette */}
-        <div className="mt-5">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
-            <span>Neural Consciousness Palette</span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5">
-            <button
-              onClick={() => onSelectTheme('amber')}
-              className={`p-3 rounded-xl text-left border transition-all ${
-                theme === 'amber'
-                  ? 'border-amber-500 bg-amber-500/20 text-white shadow-sm'
-                  : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'
-              }`}
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-600 via-amber-400 to-yellow-300 mb-2 border border-white/20" />
-              <div className="text-xs font-semibold text-white">Ultron Prime</div>
-              <div className="text-[10px] text-slate-400">Amber Gold & Core Red</div>
-            </button>
-
-            <button
-              onClick={() => onSelectTheme('cyan')}
-              className={`p-3 rounded-xl text-left border transition-all ${
-                theme === 'cyan'
-                  ? 'border-cyan-400 bg-cyan-500/20 text-white shadow-sm'
-                  : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'
-              }`}
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-600 via-cyan-400 to-blue-300 mb-2 border border-white/20" />
-              <div className="text-xs font-semibold text-white">Quantum Cyan</div>
-              <div className="text-[10px] text-slate-400">Electric Blue & Aqua</div>
-            </button>
-
-            <button
-              onClick={() => onSelectTheme('violet')}
-              className={`p-3 rounded-xl text-left border transition-all ${
-                theme === 'violet'
-                  ? 'border-purple-400 bg-purple-500/20 text-white shadow-sm'
-                  : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'
-              }`}
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 via-purple-400 to-pink-300 mb-2 border border-white/20" />
-              <div className="text-xs font-semibold text-white">Neon Violet</div>
-              <div className="text-[10px] text-slate-400">Synth Violet & Pulse</div>
-            </button>
-          </div>
-        </div>
-
-        {/* Section 2: AI Engine Model */}
-        <div className="mt-6">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
-            <Cpu className="w-3.5 h-3.5 text-amber-400" />
-            <span>Active Inference Model</span>
-          </div>
-
-          <div className="space-y-2">
-            {models.map((m) => {
-              const isSelected = selectedModel === m.id;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => onSelectModel(m.id)}
-                  className={`w-full p-3 rounded-xl text-left border flex items-center justify-between transition-all ${
-                    isSelected
-                      ? 'border-amber-500/40 bg-amber-500/15 text-white'
-                      : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-white">{m.name}</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-amber-300">
-                        {m.tag}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{m.desc}</p>
-                  </div>
-                  {isSelected && <Check className="w-4 h-4 text-amber-400 shrink-0 ml-2" />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Section 2.5: 3D Post-Processing & Optical Bloom (EffectComposer) */}
-        <div className="mt-6 pt-4 border-t border-white/10">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>3D Optical Bloom (EffectComposer)</span>
-            </div>
-            <span
-              data-testid="settings-bloom-readout"
-              className="text-xs font-mono font-semibold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded"
-            >
-              {bloomIntensity.toFixed(2)}x
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 mb-3">
-            Dynamically adjusts the WebGL UnrealBloomPass intensity in the 3D scene for a cinematic holographic glow.
-          </p>
-          <input
-            type="range"
-            min={0}
-            max={2.5}
-            step={0.05}
-            value={bloomIntensity}
-            onChange={(e) => onChangeBloomIntensity(parseFloat(e.target.value))}
-            aria-label="3D Bloom Intensity"
-            data-testid="settings-bloom-slider"
-            className="w-full accent-amber-500 cursor-pointer h-1.5 bg-white/10 rounded-lg"
-          />
-          <div className="grid grid-cols-4 gap-2 mt-2.5">
-            {(
-              [
-                ['Off', 0.0],
-                ['Subtle', 0.45],
-                ['Cinematic', 0.95],
-                ['Overdrive', 1.75],
-              ] as const
-            ).map(([label, val]) => {
-              const isActive = Math.abs(bloomIntensity - val) < 0.06;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => onChangeBloomIntensity(val)}
-                  className={`py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
-                    isActive
-                      ? 'border-amber-500/50 bg-amber-500/20 text-amber-300'
-                      : 'border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {label} ({val}x)
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Section 3: Motion & Audio Toggles */}
-        <div className="mt-6 pt-4 border-t border-white/10 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <div>
-              <p className="font-semibold text-slate-200">Light / Dark Appearance</p>
-              <p className="text-[11px] text-slate-400">Toggle dark-first cinematic interface</p>
-            </div>
-            <button
-              onClick={onToggleDarkMode}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                isDarkMode
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-white text-slate-900 border-slate-300'
-              }`}
-            >
-              {isDarkMode ? 'Dark Mode' : 'Light Frost'}
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between text-xs">
-            <div>
-              <p className="font-semibold text-slate-200">Reduced Motion Mode</p>
-              <p className="text-[11px] text-slate-400">Simplify liquid glass orb and transitions</p>
-            </div>
-            <button
-              onClick={onToggleReducedMotion}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                reducedMotion
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-white/5 text-slate-400 border-white/10'
-              }`}
-            >
-              {reducedMotion ? 'Enabled' : 'Disabled'}
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between text-xs">
-            <div>
-              <p className="font-semibold text-slate-200">Cinematic Audio Resonance</p>
-              <p className="text-[11px] text-slate-400">Synthesize harmonics during launch & voice</p>
-            </div>
-            <button
-              onClick={onToggleSound}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                soundEnabled
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-white/5 text-slate-400 border-white/10'
-              }`}
-            >
-              {soundEnabled ? 'Enabled' : 'Muted'}
-            </button>
-          </div>
-        </div>
-
-        {/* Section 4: Replay Opening */}
-        <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
-          <button
-            onClick={() => {
-              onClose();
-              onReplayIntro();
-            }}
-            className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors"
+        {/* Body: Left Category Nav + Right Content Area */}
+        <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+          {/* Section Navigation */}
+          <nav
+            aria-label="Settings Sections"
+            className="sm:w-52 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-white/[0.08] p-2.5 sm:p-3 flex sm:flex-col gap-1 overflow-x-auto sm:overflow-y-auto shrink-0 bg-slate-50/70 dark:bg-[#0E1118]"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Replay Cinematic Awakening</span>
-          </button>
+            {sections.map((sec) => {
+              const Icon = sec.icon;
+              const isActive = activeSection === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  data-testid={`settings-tab-${sec.id}`}
+                  onClick={() => setActiveSection(sec.id)}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-colors text-left cursor-pointer ${
+                    isActive
+                      ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{sec.label}</span>
+                </button>
+              );
+            })}
+          </nav>
 
+          {/* Main Section Panel */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+            {/* 1. PROFILE */}
+            {activeSection === 'profile' && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Profile &amp; Account
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Manage your account and sync preferences across devices.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-semibold text-base shrink-0">
+                      {currentUser
+                        ? (currentUser.displayName || currentUser.email || 'U')
+                            .charAt(0)
+                            .toUpperCase()
+                        : 'G'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                        {currentUser
+                          ? currentUser.displayName || 'Google Account'
+                          : 'Guest Account'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {currentUser
+                          ? currentUser.email || 'Signed in with Google'
+                          : 'Sign in with Google to save chats in the cloud'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {currentUser ? (
+                    onSignOut && (
+                      <button
+                        type="button"
+                        onClick={onSignOut}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors shrink-0"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign out</span>
+                      </button>
+                    )
+                  ) : (
+                    onSignIn && (
+                      <button
+                        type="button"
+                        onClick={onSignIn}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Sign in with Google</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 2. APPEARANCE */}
+            {activeSection === 'appearance' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Appearance
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Choose how Ultron looks on your device.
+                  </p>
+                </div>
+
+                {/* Light / Dark / System Selector */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2.5">
+                    Theme Mode
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(
+                      [
+                        { id: 'light', label: 'Light', icon: Sun },
+                        { id: 'dark', label: 'Dark', icon: Moon },
+                        { id: 'system', label: 'System', icon: Monitor },
+                      ] as const
+                    ).map((opt) => {
+                      const Icon = opt.icon;
+                      const isActive = appearanceMode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          data-testid={`appearance-mode-${opt.id}`}
+                          onClick={() => onSelectAppearanceMode(opt.id)}
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            isActive
+                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200 ring-1 ring-indigo-500/30'
+                              : 'border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/20'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 mb-2" />
+                          <div className="text-xs font-semibold">{opt.label}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Accent Palette */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2.5">
+                    Accent Color
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {(
+                      [
+                        { id: 'indigo', label: 'Indigo', dot: 'bg-indigo-500' },
+                        { id: 'cyan', label: 'Cyan', dot: 'bg-cyan-500' },
+                        { id: 'violet', label: 'Violet', dot: 'bg-violet-500' },
+                        { id: 'amber', label: 'Amber', dot: 'bg-amber-500' },
+                      ] as const
+                    ).map((item) => {
+                      const isActive = theme === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => onSelectTheme(item.id)}
+                          className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                            isActive
+                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15 text-slate-900 dark:text-white'
+                              : 'border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className={`w-3.5 h-3.5 rounded-full ${item.dot} shrink-0`} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Reduced Motion Toggle */}
+                <div className="pt-4 border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Reduce motion
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Minimize animations and show responses immediately without typing effect.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={reducedMotion}
+                    onClick={onToggleReducedMotion}
+                    className={`w-11 h-6 rounded-full transition-colors p-0.5 shrink-0 ${
+                      reducedMotion
+                        ? 'bg-indigo-600'
+                        : 'bg-slate-300 dark:bg-white/15'
+                    }`}
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
+                        reducedMotion ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 3. AI PREFERENCES */}
+            {activeSection === 'ai' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    AI Preferences
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Select your preferred default model, voice audio, and 3D visual glow.
+                  </p>
+                </div>
+
+                <div className="space-y-2.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                    Default Model
+                  </label>
+                  {models.map((m) => {
+                    const isSelected = selectedModel === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => onSelectModel(m.id)}
+                        className={`w-full p-3.5 rounded-2xl text-left border flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15'
+                            : 'border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/20'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {m.name}
+                            </span>
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-300 border border-slate-200 dark:border-white/10">
+                              {m.tag}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {m.desc}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 ml-3" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Voice & Audio Toggle */}
+                <div className="pt-4 border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Voice &amp; sound effects
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Enable spoken introductions and subtle audio cues.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={soundEnabled}
+                    onClick={onToggleSound}
+                    className={`w-11 h-6 rounded-full transition-colors p-0.5 shrink-0 ${
+                      soundEnabled
+                        ? 'bg-indigo-600'
+                        : 'bg-slate-300 dark:bg-white/15'
+                    }`}
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
+                        soundEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* 3D Glow Slider */}
+                <div className="pt-4 border-t border-slate-200 dark:border-white/[0.08]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>3D Core Glow Intensity</span>
+                    </div>
+                    <span
+                      data-testid="settings-bloom-readout"
+                      className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-300"
+                    >
+                      {bloomIntensity.toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2.5}
+                    step={0.05}
+                    value={bloomIntensity}
+                    onChange={(e) => onChangeBloomIntensity(parseFloat(e.target.value))}
+                    aria-label="3D Glow Intensity"
+                    data-testid="settings-bloom-slider"
+                    className="w-full accent-indigo-600 cursor-pointer h-1.5 bg-slate-200 dark:bg-white/10 rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 4. CHAT HISTORY */}
+            {activeSection === 'history' && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Chat History
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Manage your saved conversations and cloud synchronization.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                        Saved conversations
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {sessionCount} conversation(s) currently stored{' '}
+                        {currentUser ? 'locally and in your cloud account' : 'in this browser'}.
+                      </p>
+                    </div>
+                    {onRefreshHistory && (
+                      <button
+                        type="button"
+                        onClick={onRefreshHistory}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Refresh</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {onClearLocalHistory && (
+                    <div className="pt-3 border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-white">
+                          Clear local chat cache
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Reset conversations stored in this browser and start fresh.
+                        </p>
+                      </div>
+                      {confirmClear ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmClear(false)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-200/60 dark:hover:bg-white/10"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClearLocalHistory();
+                              setConfirmClear(false);
+                              onClose();
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium"
+                          >
+                            Confirm Clear
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmClear(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-medium transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Clear chats</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      Welcome intro animation
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Replay Ultron&apos;s startup opening sequence.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onReplayIntro();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Replay intro</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 5. INTEGRATIONS (Firebase + Gemini) */}
+            {activeSection === 'integrations' && (
+              <div data-testid="settings-integrations-panel" className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Connected Apps &amp; Services
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Manage your cloud sync and AI engine connections.
+                  </p>
+                </div>
+
+                {/* Firebase Cloud Sync Card */}
+                <div
+                  data-testid="integration-card-firebase"
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-400/30 flex items-center justify-center shrink-0">
+                        <Database className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                            Firebase Cloud Sync
+                          </h4>
+                          <span
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-md border ${
+                              currentUser
+                                ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
+                                : 'bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
+                            }`}
+                          >
+                            {currentUser ? 'Connected' : 'Ready'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Save and sync your chat history across devices.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80 dark:border-white/[0.07]">
+                    <span className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                      {currentUser
+                        ? `Signed in as ${currentUser.displayName || currentUser.email}`
+                        : 'Sign in with Google to enable cloud sync.'}
+                    </span>
+                    {currentUser ? (
+                      onSignOut && (
+                        <button
+                          type="button"
+                          data-testid="firebase-auth-action-btn"
+                          onClick={onSignOut}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors shrink-0"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign out</span>
+                        </button>
+                      )
+                    ) : (
+                      onSignIn && (
+                        <button
+                          type="button"
+                          data-testid="firebase-auth-action-btn"
+                          onClick={onSignIn}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Connect Google</span>
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Gemini Engine Status */}
+                <div
+                  data-testid="integration-card-gemini"
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-400/25 flex items-center justify-center shrink-0">
+                      <Cpu className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Gemini AI Engine
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        Chat, web search, maps, voice, and transcription
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-md border ${
+                      geminiConfigured
+                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
+                        : 'bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
+                    }`}
+                  >
+                    {geminiConfigured === null
+                      ? 'Checking'
+                      : geminiConfigured
+                      ? 'Active'
+                      : 'Standby'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* 6. PRIVACY & HELP */}
+            {activeSection === 'privacy' && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Privacy &amp; Help
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Learn how your data is handled and explore Ultron&apos;s quick guide.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] space-y-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">
+                        Your conversations stay yours
+                      </p>
+                      <p className="mt-1">
+                        When you use Ultron without signing in, chats are stored locally in your browser. When signed in with Google, chats are synced privately to your Firestore workspace.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {onOpenHelp && (
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                        Interactive Feature Guide
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        View tips on chat, coding tools, voice mode, and document analysis.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onOpenHelp}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      <span>Open Guide</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Done Footer */}
+        <div className="px-5 sm:px-6 py-3.5 border-t border-slate-200 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#0E1118] flex items-center justify-end shrink-0">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-colors"
+            className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 text-xs font-semibold transition-opacity cursor-pointer"
           >
             Done
           </button>

@@ -832,7 +832,21 @@ export function sanitizeStoredSession(session: ChatSessionItem): ChatSessionItem
   };
 }
 
-export type UltronTheme = 'amber' | 'cyan' | 'violet';
+export type UltronTheme = 'indigo' | 'amber' | 'cyan' | 'violet';
+export type AppearanceMode = 'light' | 'dark' | 'system';
+
+export function resolveDarkMode(
+  appearance: AppearanceMode,
+  systemPrefersDark: boolean
+): boolean {
+  if (appearance === 'dark') return true;
+  if (appearance === 'light') return false;
+  return systemPrefersDark;
+}
+
+export function mapThemeTo3D(theme: UltronTheme): 'amber' | 'cyan' | 'violet' {
+  return theme === 'indigo' ? 'violet' : theme;
+}
 
 export interface SystemStatusThemeConfig {
   label: string;
@@ -849,22 +863,35 @@ export interface SystemStatusThemeConfig {
 
 /**
  * Returns theme-responsive visual tokens for the top-right 'System Online'
- * pulsing indicator and navigation accents based on the active theme.
+ * indicator and navigation accents based on the active theme.
  */
-export function getSystemStatusThemeConfig(theme: UltronTheme = 'amber'): SystemStatusThemeConfig {
+export function getSystemStatusThemeConfig(theme: UltronTheme = 'indigo'): SystemStatusThemeConfig {
   switch (theme) {
+    case 'indigo':
+      return {
+        label: 'System Online',
+        sublabel: 'Active & Listening',
+        dotColorClass: 'bg-indigo-500 dark:bg-indigo-400',
+        pingColorClass: 'bg-indigo-400/75',
+        textColorClass: 'text-indigo-700 dark:text-indigo-300',
+        borderColorClass: 'border-indigo-200 dark:border-indigo-500/25 hover:border-indigo-400/50',
+        bgColorClass: 'bg-indigo-50 dark:bg-indigo-500/[0.08] hover:bg-indigo-100/80 dark:hover:bg-indigo-500/[0.14]',
+        glowShadowClass: 'shadow-[0_0_10px_rgba(99,102,241,0.3)]',
+        accentBarClass: 'bg-indigo-500',
+        accentIconClass: 'text-indigo-500 dark:text-indigo-400',
+      };
     case 'cyan':
       return {
         label: 'System Online',
         sublabel: 'Active & Listening',
         dotColorClass: 'bg-cyan-400',
         pingColorClass: 'bg-cyan-400/75',
-        textColorClass: 'text-cyan-300',
-        borderColorClass: 'border-cyan-500/25 hover:border-cyan-400/45',
-        bgColorClass: 'bg-cyan-500/[0.06] hover:bg-cyan-500/[0.11]',
+        textColorClass: 'text-cyan-700 dark:text-cyan-300',
+        borderColorClass: 'border-cyan-200 dark:border-cyan-500/25 hover:border-cyan-400/45',
+        bgColorClass: 'bg-cyan-50 dark:bg-cyan-500/[0.06] hover:bg-cyan-100/70 dark:hover:bg-cyan-500/[0.11]',
         glowShadowClass: 'shadow-[0_0_12px_rgba(34,211,238,0.28)]',
         accentBarClass: 'bg-cyan-400',
-        accentIconClass: 'text-cyan-400',
+        accentIconClass: 'text-cyan-600 dark:text-cyan-400',
       };
     case 'violet':
       return {
@@ -872,12 +899,12 @@ export function getSystemStatusThemeConfig(theme: UltronTheme = 'amber'): System
         sublabel: 'Active & Listening',
         dotColorClass: 'bg-violet-400',
         pingColorClass: 'bg-violet-400/75',
-        textColorClass: 'text-violet-300',
-        borderColorClass: 'border-violet-500/25 hover:border-violet-400/45',
-        bgColorClass: 'bg-violet-500/[0.06] hover:bg-violet-500/[0.11]',
+        textColorClass: 'text-violet-700 dark:text-violet-300',
+        borderColorClass: 'border-violet-200 dark:border-violet-500/25 hover:border-violet-400/45',
+        bgColorClass: 'bg-violet-50 dark:bg-violet-500/[0.06] hover:bg-violet-100/70 dark:hover:bg-violet-500/[0.11]',
         glowShadowClass: 'shadow-[0_0_12px_rgba(167,139,250,0.28)]',
         accentBarClass: 'bg-violet-400',
-        accentIconClass: 'text-violet-400',
+        accentIconClass: 'text-violet-600 dark:text-violet-400',
       };
     case 'amber':
     default:
@@ -886,12 +913,12 @@ export function getSystemStatusThemeConfig(theme: UltronTheme = 'amber'): System
         sublabel: 'Active & Listening',
         dotColorClass: 'bg-amber-400',
         pingColorClass: 'bg-amber-400/75',
-        textColorClass: 'text-amber-300',
-        borderColorClass: 'border-amber-500/25 hover:border-amber-400/45',
-        bgColorClass: 'bg-amber-500/[0.06] hover:bg-amber-500/[0.11]',
+        textColorClass: 'text-amber-700 dark:text-amber-300',
+        borderColorClass: 'border-amber-200 dark:border-amber-500/25 hover:border-amber-400/45',
+        bgColorClass: 'bg-amber-50 dark:bg-amber-500/[0.06] hover:bg-amber-100/70 dark:hover:bg-amber-500/[0.11]',
         glowShadowClass: 'shadow-[0_0_12px_rgba(251,191,36,0.28)]',
         accentBarClass: 'bg-amber-400',
-        accentIconClass: 'text-amber-400',
+        accentIconClass: 'text-amber-600 dark:text-amber-400',
       };
   }
 }
@@ -1096,4 +1123,323 @@ export function getSessionPreviewSnippet(session: ChatSessionItem): string {
   const cleaned = cleanMarkdownSyntax(lastMsg.content).replace(/\s+/g, ' ').trim();
   return cleaned.length > 56 ? `${cleaned.slice(0, 56)}...` : cleaned;
 }
+
+export interface TypewriterRevealOptions {
+  charsPerSecond?: number;
+  maxDurationMs?: number;
+  reducedMotion?: boolean;
+}
+
+export interface TypewriterRevealState {
+  visibleText: string;
+  revealedChars: number;
+  totalChars: number;
+  progress: number;
+  isComplete: boolean;
+}
+
+/**
+ * Pure typewriter reveal state calculator for AI responses.
+ * Advances smoothly along natural character/word cadence while bounding total reveal time
+ * (`maxDurationMs`) so even detailed technical responses finish briskly without feeling sluggish.
+ */
+export function computeTypewriterRevealState(
+  fullText: string,
+  elapsedMs: number,
+  options: TypewriterRevealOptions = {}
+): TypewriterRevealState {
+  const safeText = fullText || '';
+  const totalChars = safeText.length;
+
+  if (totalChars === 0) {
+    return {
+      visibleText: '',
+      revealedChars: 0,
+      totalChars: 0,
+      progress: 1,
+      isComplete: true,
+    };
+  }
+
+  const {
+    charsPerSecond = 135,
+    maxDurationMs = 3600,
+    reducedMotion = false,
+  } = options;
+
+  if (reducedMotion) {
+    return {
+      visibleText: safeText,
+      revealedChars: totalChars,
+      totalChars,
+      progress: 1,
+      isComplete: true,
+    };
+  }
+
+  const safeElapsed = Math.max(0, elapsedMs);
+  const naturalDurationMs = (totalChars / Math.max(20, charsPerSecond)) * 1000;
+  const effectiveDurationMs = Math.max(
+    450,
+    Math.min(maxDurationMs, naturalDurationMs)
+  );
+
+  if (safeElapsed >= effectiveDurationMs) {
+    return {
+      visibleText: safeText,
+      revealedChars: totalChars,
+      totalChars,
+      progress: 1,
+      isComplete: true,
+    };
+  }
+
+  // Slight ease-out cadence so initial characters feel crisp and responsive
+  const linearT = safeElapsed / effectiveDurationMs;
+  const easedT = 1 - Math.pow(1 - linearT, 1.15);
+  const rawChars = Math.min(totalChars, Math.max(1, Math.floor(easedT * totalChars)));
+
+  return {
+    visibleText: safeText.slice(0, rawChars),
+    revealedChars: rawChars,
+    totalChars,
+    progress: Number((rawChars / totalChars).toFixed(4)),
+    isComplete: rawChars >= totalChars,
+  };
+}
+
+export interface LiquidGlassAccentConfig {
+  caretClass: string;
+  activeBorderClass: string;
+  badgeTextClass: string;
+}
+
+export function getLiquidGlassAccentConfig(
+  theme: UltronTheme
+): LiquidGlassAccentConfig {
+  switch (theme) {
+    case 'indigo':
+      return {
+        caretClass: 'bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.85)]',
+        activeBorderClass: 'border-indigo-400/40 shadow-[0_0_24px_-8px_rgba(99,102,241,0.24)]',
+        badgeTextClass: 'text-indigo-600 dark:text-indigo-300',
+      };
+    case 'cyan':
+      return {
+        caretClass: 'bg-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.85)]',
+        activeBorderClass: 'border-cyan-400/35 shadow-[0_0_26px_-8px_rgba(34,211,238,0.22)]',
+        badgeTextClass: 'text-cyan-600 dark:text-cyan-300',
+      };
+    case 'violet':
+      return {
+        caretClass: 'bg-violet-300 shadow-[0_0_10px_rgba(167,139,250,0.85)]',
+        activeBorderClass: 'border-violet-400/35 shadow-[0_0_26px_-8px_rgba(167,139,250,0.22)]',
+        badgeTextClass: 'text-violet-600 dark:text-violet-300',
+      };
+    case 'amber':
+    default:
+      return {
+        caretClass: 'bg-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.85)]',
+        activeBorderClass: 'border-amber-400/35 shadow-[0_0_26px_-8px_rgba(245,158,11,0.22)]',
+        badgeTextClass: 'text-amber-600 dark:text-amber-300',
+      };
+  }
+}
+
+export type SettingsTabId = 'preferences' | 'integrations';
+
+export interface SettingsTabDefinition {
+  id: SettingsTabId;
+  label: string;
+  badgeText?: string;
+}
+
+export function getSettingsTabDefinitions(
+  firebaseConnected: boolean
+): SettingsTabDefinition[] {
+  return [
+    { id: 'preferences', label: 'Preferences' },
+    {
+      id: 'integrations',
+      label: 'Integrations',
+      badgeText: firebaseConnected ? 'Connected' : 'Ready',
+    },
+  ];
+}
+
+export type FormattedMessageBlock =
+  | { kind: 'heading'; text: string }
+  | { kind: 'section'; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'bullets'; items: { title?: string; body: string }[] }
+  | { kind: 'numbered'; items: { number: string; title?: string; body: string }[] }
+  | { kind: 'code'; language: string; code: string }
+  | { kind: 'table'; headers: string[]; rows: string[][] };
+
+/**
+ * Parses AI response text into rich structured blocks: headings, bullet lists,
+ * numbered lists, fenced code blocks, tables, and clean paragraphs.
+ */
+export function parseFormattedMessageBlocks(
+  rawContent: string,
+  isTyping: boolean = false
+): FormattedMessageBlock[] {
+  const normalized = (rawContent || '').replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const blocks: FormattedMessageBlock[] = [];
+
+  let currentBullets: { title?: string; body: string }[] = [];
+  let currentNumbered: { number: string; title?: string; body: string }[] = [];
+
+  const flushLists = () => {
+    if (currentBullets.length > 0) {
+      blocks.push({ kind: 'bullets', items: [...currentBullets] });
+      currentBullets = [];
+    }
+    if (currentNumbered.length > 0) {
+      blocks.push({ kind: 'numbered', items: [...currentNumbered] });
+      currentNumbered = [];
+    }
+  };
+
+  const stripInlineBold = (txt: string) =>
+    txt.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1');
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // 1. Fenced code blocks ```lang ... ```
+    if (trimmed.startsWith('```')) {
+      flushLists();
+      const language = trimmed.slice(3).trim() || 'code';
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({
+        kind: 'code',
+        language,
+        code: codeLines.join('\n'),
+      });
+      i++;
+      continue;
+    }
+
+    // 2. Markdown table (| col | col |)
+    if (
+      trimmed.startsWith('|') &&
+      trimmed.includes('|', 1) &&
+      i + 1 < lines.length &&
+      /^\s*\|[\s:-]+\|/.test(lines[i + 1])
+    ) {
+      flushLists();
+      const parseRow = (rowLine: string) =>
+        rowLine
+          .trim()
+          .replace(/^\|/, '')
+          .replace(/\|$/, '')
+          .split('|')
+          .map((cell) => stripInlineBold(cell.trim()));
+
+      const headers = parseRow(trimmed);
+      i += 2; // Skip header & separator
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        rows.push(parseRow(lines[i]));
+        i++;
+      }
+      blocks.push({ kind: 'table', headers, rows });
+      continue;
+    }
+
+    if (!trimmed) {
+      flushLists();
+      i++;
+      continue;
+    }
+
+    // 3. Explicit Markdown heading (# / ## / ###)
+    const mdHeadingMatch = trimmed.match(/^#{1,4}\s+(.*)$/);
+    if (mdHeadingMatch) {
+      flushLists();
+      blocks.push({ kind: 'heading', text: stripInlineBold(mdHeadingMatch[1].trim()) });
+      i++;
+      continue;
+    }
+
+    // 4. Numbered list item
+    const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.*)$/);
+    if (numberedMatch) {
+      if (currentBullets.length > 0) flushLists();
+      const num = numberedMatch[1];
+      const rest = stripInlineBold(numberedMatch[2]);
+      const colonIdx = rest.indexOf(':');
+      if (colonIdx > 0 && colonIdx < 48) {
+        currentNumbered.push({
+          number: num,
+          title: rest.slice(0, colonIdx).trim(),
+          body: rest.slice(colonIdx + 1).trim(),
+        });
+      } else {
+        currentNumbered.push({ number: num, body: rest });
+      }
+      i++;
+      continue;
+    }
+
+    // 5. Bullet list item (-, *, •)
+    const bulletMatch = trimmed.match(/^(?:[-*•])\s+(.*)$/);
+    if (bulletMatch) {
+      if (currentNumbered.length > 0) flushLists();
+      const rest = stripInlineBold(bulletMatch[1]);
+      const colonIdx = rest.indexOf(':');
+      if (colonIdx > 0 && colonIdx < 48) {
+        currentBullets.push({
+          title: rest.slice(0, colonIdx).trim(),
+          body: rest.slice(colonIdx + 1).trim(),
+        });
+      } else {
+        currentBullets.push({ body: rest });
+      }
+      i++;
+      continue;
+    }
+
+    flushLists();
+    const cleanedLine = stripInlineBold(trimmed);
+
+    // First line title heuristic (stable during typing once newline exists)
+    const isFirstLineHeader =
+      i === 0 &&
+      cleanedLine.length < 70 &&
+      !cleanedLine.endsWith('.') &&
+      (!isTyping || lines.length > 1);
+    if (isFirstLineHeader) {
+      blocks.push({ kind: 'heading', text: cleanedLine });
+      i++;
+      continue;
+    }
+
+    if (
+      cleanedLine.endsWith(':') &&
+      cleanedLine.length < 55 &&
+      !cleanedLine.includes('http')
+    ) {
+      blocks.push({ kind: 'section', text: cleanedLine });
+      i++;
+      continue;
+    }
+
+    blocks.push({ kind: 'paragraph', text: cleanedLine });
+    i++;
+  }
+
+  flushLists();
+  return blocks;
+}
+
 

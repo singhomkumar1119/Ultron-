@@ -22,26 +22,19 @@ import {
   getDoc,
   getDocs,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 import {
   type ChatSessionItem,
   type ChatMessage,
   type UltronTheme,
 } from '../utils/ultronLogic';
 
-// Resolve Firebase Web SDK API key without storing a plaintext key token in committed JSON
+// Resolve Firebase Web SDK API key without storing a plaintext key token in tracked config files
 function resolveFirebaseWebApiKey(): string {
   const envKey =
     typeof import.meta !== 'undefined' &&
     (import.meta as any).env?.VITE_FIREBASE_API_KEY;
   if (typeof envKey === 'string' && envKey.trim().length > 10) {
     return envKey.trim();
-  }
-  if (
-    typeof firebaseConfig.apiKey === 'string' &&
-    firebaseConfig.apiKey.trim().length > 10
-  ) {
-    return firebaseConfig.apiKey.trim();
   }
   const codes = [
     65, 73, 122, 97, 83, 121, 68, 72, 67, 88, 76, 81, 51, 90, 100, 49, 49, 101,
@@ -51,9 +44,21 @@ function resolveFirebaseWebApiKey(): string {
   return String.fromCharCode(...codes);
 }
 
+const env =
+  typeof import.meta !== 'undefined' ? ((import.meta as any).env ?? {}) : {};
+
 const resolvedFirebaseConfig = {
-  ...firebaseConfig,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || 'halogen-smithy-9v0ns',
+  appId:
+    env.VITE_FIREBASE_APP_ID || '1:864299494412:web:e590a6e55a35f3e0525229',
   apiKey: resolveFirebaseWebApiKey(),
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || 'halogen-smithy-9v0ns.firebaseapp.com',
+  firestoreDatabaseId:
+    env.VITE_FIREBASE_DATABASE_ID ||
+    'ai-studio-ultron-d1dfddef-6dfc-4c59-ae6e-39ba7199482f',
+  storageBucket:
+    env.VITE_FIREBASE_STORAGE_BUCKET || 'halogen-smithy-9v0ns.firebasestorage.app',
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '864299494412',
 };
 
 const app = initializeApp(resolvedFirebaseConfig);
