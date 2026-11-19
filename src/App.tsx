@@ -593,6 +593,7 @@ export default function App() {
               onBranchToCoding={handleBranchToCoding}
               onOpen3DStudio={() => setCurrentMode('3d-core')}
               onOpenVoiceMode={() => setIsVoiceOpen(true)}
+              onStartNewChat={() => handleCreateSession('New chat')}
               theme={theme}
               bloomIntensity={bloomIntensity}
               reducedMotion={reducedMotion}

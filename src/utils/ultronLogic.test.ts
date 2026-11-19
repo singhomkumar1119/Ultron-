@@ -29,6 +29,10 @@ import {
   getSettingsTabDefinitions,
   resolveDarkMode,
   parseFormattedMessageBlocks,
+  getModelContextLimit,
+  estimateTokenCount,
+  formatCompactTokenCount,
+  estimateConversationTokenUsage,
   type CommandItem,
 } from './ultronLogic';
 
@@ -401,5 +405,56 @@ test('resolveDarkMode and parseFormattedMessageBlocks handle light/dark/system, 
   }
 });
 
+test('estimateTokenCount and estimateConversationTokenUsage calculate thread totals, drafts, and context limits accurately', () => {
+  assert.equal(estimateTokenCount(''), 0);
+  assert.equal(estimateTokenCount('   '), 0);
+  assert.ok(estimateTokenCount('Hello Ultron, explain quantum error correction.') >= 6);
 
+  assert.equal(getModelContextLimit('gemini-4-hydrogen'), 1_000_000);
+  assert.equal(getModelContextLimit('gemini-4-carbon'), 2_000_000);
+
+  assert.equal(formatCompactTokenCount(850), '850');
+  assert.equal(formatCompactTokenCount(12_400), '12.4k');
+  assert.equal(formatCompactTokenCount(1_000_000), '1M');
+  assert.equal(formatCompactTokenCount(2_000_000), '2M');
+
+  const usage = estimateConversationTokenUsage({
+    messages: [
+      { role: 'user', content: 'Design a distributed cache in TypeScript.' },
+      { role: 'assistant', content: 'Use consistent hashing with bounded LRU eviction and async write-through.' },
+    ],
+    draftText: 'How do we handle hot keys?',
+    streamingText: 'Partition hot keys',
+    modelId: 'gemini-4-carbon',
+  });
+
+  assert.ok(usage.userTokens > 0);
+  assert.ok(usage.assistantTokens > 0);
+  assert.ok(usage.draftTokens > 0);
+  assert.ok(usage.streamingTokens > 0);
+  assert.equal(
+    usage.totalTokens,
+    usage.userTokens + usage.assistantTokens + usage.draftTokens + usage.streamingTokens
+  );
+  assert.equal(usage.contextLimit, 2_000_000);
+  assert.equal(usage.formattedLimit, '2M');
+  assert.equal(usage.statusLevel, 'normal');
+
+  // Verify warning & critical status thresholds
+  const hugeWarningText = 'token '.repeat(590_000); // ~767k tokens >= 75% of 1M
+  const warningUsage = estimateConversationTokenUsage({
+    messages: [{ role: 'user', content: hugeWarningText }],
+    modelId: 'gemini-4-hydrogen',
+  });
+  assert.equal(warningUsage.statusLevel, 'warning');
+  assert.equal(warningUsage.statusLabel, 'High Usage');
+
+  const hugeCriticalText = 'token '.repeat(720_000); // ~936k tokens >= 90% of 1M
+  const criticalUsage = estimateConversationTokenUsage({
+    messages: [{ role: 'user', content: hugeCriticalText }],
+    modelId: 'gemini-4-hydrogen',
+  });
+  assert.equal(criticalUsage.statusLevel, 'critical');
+  assert.equal(criticalUsage.statusLabel, 'Near Limit');
+});
 

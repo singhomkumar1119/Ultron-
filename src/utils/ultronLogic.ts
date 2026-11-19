@@ -1442,4 +1442,120 @@ export function parseFormattedMessageBlocks(
   return blocks;
 }
 
+export type ContextStatusLevel = 'normal' | 'warning' | 'critical';
 
+export interface ConversationTokenUsage {
+  userTokens: number;
+  assistantTokens: number;
+  draftTokens: number;
+  streamingTokens: number;
+  totalTokens: number;
+  contextLimit: number;
+  remainingTokens: number;
+  usagePercent: number;
+  formattedTotal: string;
+  formattedLimit: string;
+  statusLevel: ContextStatusLevel;
+  statusLabel: string;
+}
+
+const MODEL_CONTEXT_LIMITS: Record<string, number> = {
+  'gemini-4-hydrogen': 1_000_000,
+  'gemini-3.1-flash-lite': 1_000_000,
+  'gemini-4-argon': 1_000_000,
+  'gemini-4-carbon': 2_000_000,
+};
+
+const MODEL_SHORT_LABELS: Record<string, string> = {
+  'gemini-4-hydrogen': 'Gemini 4 Hydrogen',
+  'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+  'gemini-4-argon': 'Gemini 4 Argon',
+  'gemini-4-carbon': 'Gemini 4 Carbon',
+};
+
+export function getModelContextLimit(modelId?: string): number {
+  if (!modelId) return 1_000_000;
+  return MODEL_CONTEXT_LIMITS[modelId] ?? 1_000_000;
+}
+
+export function getModelShortLabel(modelId?: string): string {
+  if (!modelId) return 'Gemini 4 Hydrogen';
+  return MODEL_SHORT_LABELS[modelId] ?? modelId;
+}
+
+/**
+ * Real-time client-side token estimator combining character ratio (~4 chars/token)
+ * and word weighting (~1.3 tokens/word) for responsive live context tracking.
+ */
+export function estimateTokenCount(text: string): number {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return 0;
+  const words = trimmed.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(Math.max(trimmed.length / 4, words * 1.3)));
+}
+
+export function formatCompactTokenCount(count: number): string {
+  const safe = Math.max(0, Math.round(count));
+  if (safe >= 1_000_000) {
+    return `${(safe / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`;
+  }
+  if (safe >= 1_000) {
+    return `${(safe / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return safe.toLocaleString('en-US');
+}
+
+export function estimateConversationTokenUsage(params: {
+  messages: Array<Pick<StoredChatMessage, 'role' | 'content'>>;
+  draftText?: string;
+  streamingText?: string;
+  modelId?: string;
+  hasAttachment?: boolean;
+}): ConversationTokenUsage {
+  let userTokens = 0;
+  let assistantTokens = 0;
+
+  for (const msg of params.messages) {
+    const tokens = estimateTokenCount(msg.content);
+    if (msg.role === 'user') {
+      userTokens += tokens;
+    } else {
+      assistantTokens += tokens;
+    }
+  }
+
+  const draftTokens =
+    estimateTokenCount(params.draftText || '') + (params.hasAttachment ? 250 : 0);
+  const streamingTokens = estimateTokenCount(params.streamingText || '');
+  const totalTokens = userTokens + assistantTokens + draftTokens + streamingTokens;
+
+  const contextLimit = getModelContextLimit(params.modelId);
+  const remainingTokens = Math.max(0, contextLimit - totalTokens);
+  const rawPercent = contextLimit > 0 ? (totalTokens / contextLimit) * 100 : 0;
+  const usagePercent = Math.min(100, Number(rawPercent.toFixed(2)));
+
+  let statusLevel: ContextStatusLevel = 'normal';
+  let statusLabel = 'Optimal';
+  if (usagePercent >= 90) {
+    statusLevel = 'critical';
+    statusLabel = 'Near Limit';
+  } else if (usagePercent >= 75) {
+    statusLevel = 'warning';
+    statusLabel = 'High Usage';
+  }
+
+  return {
+    userTokens,
+    assistantTokens,
+    draftTokens,
+    streamingTokens,
+    totalTokens,
+    contextLimit,
+    remainingTokens,
+    usagePercent,
+    formattedTotal: formatCompactTokenCount(totalTokens),
+    formattedLimit: formatCompactTokenCount(contextLimit),
+    statusLevel,
+    statusLabel,
+  };
+}
