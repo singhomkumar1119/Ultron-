@@ -4,6 +4,8 @@ import {
   Copy,
   Check,
   Volume2,
+  VolumeX,
+  Square,
   RefreshCw,
   Code2,
   ChevronDown,
@@ -46,12 +48,8 @@ import {
   parseFormattedMessageBlocks,
   estimateConversationTokenUsage,
   getModelShortLabel,
+  normalizeAudioMimeType,
 } from '../utils/ultronLogic';
-import {
-  type User,
-  saveSessionToFirestore,
-  saveMessageToFirestore,
-} from '../lib/firebase';
 
 export type ChatMessage = StoredChatMessage;
 export type GroundingMode = 'none' | 'search' | 'maps';
@@ -67,54 +65,24 @@ interface ChatViewProps {
   theme: UltronTheme;
   bloomIntensity?: number;
   reducedMotion?: boolean;
+  soundEnabled?: boolean;
   selectedModel?: string;
   onSelectModel?: (model: string) => void;
-  currentUser?: User | null;
   externalNotice?: string | null;
   onClearExternalNotice?: () => void;
 }
 
-/**
- * Generates a short 16kHz WAV tone in base64 when microphone hardware is unavailable
- * (e.g. headless browser) so gemini-3.5-transcribe can be exercised end-to-end.
- */
-function createSampleWavBase64(): string {
-  const sampleRate = 16000;
-  const numSamples = 4000; // 0.25s
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  };
-
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-
-  for (let i = 0; i < numSamples; i++) {
-    const sample = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 4000;
-    view.setInt16(44 + i * 2, sample, true);
+function pickSupportedRecorderMimeType(): string {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return '';
   }
-
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ];
+  return candidates.find((c) => MediaRecorder.isTypeSupported(c)) || '';
 }
 
 /**
@@ -452,9 +420,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   theme,
   bloomIntensity = 0.85,
   reducedMotion = false,
+  soundEnabled = true,
   selectedModel = 'gemini-4-hydrogen',
   onSelectModel,
-  currentUser = null,
   externalNotice = null,
   onClearExternalNotice,
 }) => {
@@ -469,6 +437,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [attachedDemoFile, setAttachedDemoFile] = useState<string | null>(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [isTranscribingAudio, setIsTranscribingAudio] = useState(false);
+  const [autoSpeakReplies, setAutoSpeakReplies] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [blobStyle, setBlobStyle] = useState<'iridescent-3d' | 'reference-orb'>('iridescent-3d');
 
@@ -489,13 +458,40 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const monitorIntervalRef = useRef<number | null>(null);
+  const monitorAudioCtxRef = useRef<AudioContext | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
+  const lastInputWasVoiceRef = useRef(false);
   const tokenPopoverRef = useRef<HTMLDivElement | null>(null);
 
   const [voiceState, setVoiceState] = useState(() => ultronVoiceEngine.getLiveState());
 
   useEffect(() => {
     return ultronVoiceEngine.subscribe((st) => setVoiceState(st));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (monitorIntervalRef.current) {
+        window.clearInterval(monitorIntervalRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {
+          // Ignore cleanup stop errors
+        }
+      }
+      voiceStreamRef.current?.getTracks().forEach((t) => t.stop());
+      monitorAudioCtxRef.current?.close().catch(() => {});
+      try {
+        speechRecognitionRef.current?.stop();
+      } catch {
+        // Ignore speech recognition stop errors
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -665,35 +661,80 @@ export const ChatView: React.FC<ChatViewProps> = ({
     },
   ];
 
-  const transcribeBase64Audio = async (base64Audio: string, mimeType: string) => {
+  const cleanupAudioMonitor = () => {
+    if (monitorIntervalRef.current) {
+      window.clearInterval(monitorIntervalRef.current);
+      monitorIntervalRef.current = null;
+    }
+    if (monitorAudioCtxRef.current) {
+      monitorAudioCtxRef.current.close().catch(() => {});
+      monitorAudioCtxRef.current = null;
+    }
+  };
+
+  const applyVoiceTranscript = (transcribedText: string) => {
+    const clean = transcribedText.trim();
+    if (!clean) {
+      setStatusNotice('No speech detected. Speak clearly into your microphone and try again.');
+      return;
+    }
+
+    lastInputWasVoiceRef.current = true;
+    const existingDraft = input.trim();
+    if (!existingDraft) {
+      setStatusNotice(null);
+      void handleSend(clean);
+    } else {
+      setInput(`${existingDraft} ${clean}`);
+      setStatusNotice('Voice transcribed into draft. Press Send when ready.');
+      textareaRef.current?.focus();
+    }
+  };
+
+  const transcribeBase64Audio = async (
+    base64Audio: string,
+    mimeType: string,
+    autoSendOnSuccess = false
+  ) => {
     setIsTranscribingAudio(true);
-    setStatusNotice('Transcribing audio with Gemini...');
+    setStatusNotice('Transcribing your voice...');
     try {
       const response = await fetch('/api/gemini/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           audioBase64: base64Audio,
-          mimeType,
+          mimeType: normalizeAudioMimeType(mimeType),
           prompt:
-            'Transcribe this spoken audio accurately into clean plain English. If the audio is a tone or silence, return: Synthesize the architecture for an autonomous multi-agent workflow.',
+            'Transcribe the spoken words accurately in plain text. If there is only silence or background noise with no speech, return an empty string.',
         }),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Transcription request failed');
       }
-      const transcribedText =
-        (data.text || '').trim() ||
-        'Synthesize the architecture for an autonomous multi-agent workflow.';
-      setInput((prev) => (prev ? `${prev} ${transcribedText}` : transcribedText));
-      setStatusNotice(data.fallbackNotice || 'Audio transcribed.');
-      textareaRef.current?.focus();
+
+      const transcribedText = String(data.text || '').trim();
+      if (!transcribedText) {
+        setStatusNotice(
+          data?.error
+            ? `Voice notice: ${data.error}`
+            : 'No speech detected in audio. Please speak clearly or type your question.'
+        );
+        return;
+      }
+
+      if (autoSendOnSuccess) {
+        applyVoiceTranscript(transcribedText);
+      } else {
+        setInput((prev) => (prev ? `${prev} ${transcribedText}` : transcribedText));
+        setStatusNotice('Audio transcribed.');
+        textareaRef.current?.focus();
+      }
     } catch (err: any) {
-      const fallbackText =
-        'Design a resilient event-driven microservice mesh with idempotent replay.';
-      setInput((prev) => (prev ? `${prev} ${fallbackText}` : fallbackText));
-      setStatusNotice(`Transcription notice: ${err?.message || 'Inserted prompt'}`);
+      setStatusNotice(
+        `Voice transcription unavailable: ${err?.message || 'Please type your question.'}`
+      );
     } finally {
       setIsTranscribingAudio(false);
     }
@@ -709,7 +750,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         const result = String(reader.result || '');
         const base64 = result.includes(',') ? result.split(',')[1] : result;
         if (base64) {
-          transcribeBase64Audio(base64, file.type || 'audio/mp3');
+          void transcribeBase64Audio(base64, file.type || 'audio/mp3', false);
         }
       };
       reader.readAsDataURL(file);
@@ -722,20 +763,154 @@ export const ChatView: React.FC<ChatViewProps> = ({
     e.target.value = '';
   };
 
+  const startBrowserSpeechRecognitionFallback = (): boolean => {
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) return false;
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = false;
+
+      let latestTranscript = '';
+
+      recognition.onresult = (event: any) => {
+        let combined = '';
+        for (let i = 0; i < event.results.length; i++) {
+          combined += event.results[i][0]?.transcript || '';
+        }
+        latestTranscript = combined.trim();
+        if (latestTranscript) {
+          setStatusNotice(`Heard: "${latestTranscript}"`);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsRecordingAudio(false);
+        speechRecognitionRef.current = null;
+        if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+          setStatusNotice(
+            'Microphone access blocked. Allow microphone permission in your browser settings to talk to Ultron.'
+          );
+        } else if (event?.error !== 'aborted') {
+          setStatusNotice(`Voice recognition error (${event?.error || 'unknown'}).`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsRecordingAudio(false);
+        speechRecognitionRef.current = null;
+        if (latestTranscript) {
+          applyVoiceTranscript(latestTranscript);
+        }
+      };
+
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+      setIsRecordingAudio(true);
+      setStatusNotice('Listening with browser speech recognition... Speak now.');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleToggleAudioTranscription = async () => {
     if (isTranscribingAudio) return;
 
-    if (isRecordingAudio && mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
+    // Unlock AudioContext synchronously on user gesture so Ultron's spoken answer isn't blocked
+    ultronVoiceEngine.unlockAudio();
+    ultronVoiceEngine.stop();
+
+    if (isRecordingAudio) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {
+          // Ignore stop errors
+        }
+      }
+      cleanupAudioMonitor();
       setIsRecordingAudio(false);
       return;
     }
 
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function' &&
+      typeof MediaRecorder !== 'undefined'
+    ) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        voiceStreamRef.current = stream;
+
+        const mimeType = pickSupportedRecorderMimeType();
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
         audioChunksRef.current = [];
+
+        // RMS silence monitor to automatically stop recording shortly after user finishes speaking
+        const startMs = performance.now();
+        let speechDetected = false;
+        let lastSoundMs = startMs;
+        try {
+          const AudioCtx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            monitorAudioCtxRef.current = ctx;
+            const src = ctx.createMediaStreamSource(stream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            src.connect(analyser);
+            const samples = new Float32Array(analyser.fftSize);
+
+            monitorIntervalRef.current = window.setInterval(() => {
+              if (recorder.state !== 'recording') return;
+              analyser.getFloatTimeDomainData(samples);
+              let sumSq = 0;
+              for (let i = 0; i < samples.length; i++) {
+                sumSq += samples[i] * samples[i];
+              }
+              const rms = Math.sqrt(sumSq / samples.length);
+              const now = performance.now();
+
+              if (rms > 0.014) {
+                speechDetected = true;
+                lastSoundMs = now;
+              } else if (speechDetected && now - lastSoundMs > 1650) {
+                recorder.stop();
+                setIsRecordingAudio(false);
+              } else if (now - startMs > 25000) {
+                recorder.stop();
+                setIsRecordingAudio(false);
+              }
+            }, 120);
+          }
+        } catch {
+          // Proceed cleanly with manual Stop button & safety timeout
+          window.setTimeout(() => {
+            if (recorder.state === 'recording') {
+              recorder.stop();
+              setIsRecordingAudio(false);
+            }
+          }, 15000);
+        }
 
         recorder.ondataavailable = (ev) => {
           if (ev.data.size > 0) {
@@ -744,41 +919,63 @@ export const ChatView: React.FC<ChatViewProps> = ({
         };
 
         recorder.onstop = () => {
+          cleanupAudioMonitor();
           stream.getTracks().forEach((t) => t.stop());
-          const blob = new Blob(audioChunksRef.current, {
-            type: recorder.mimeType || 'audio/webm',
-          });
-          if (blob.size === 0) {
-            transcribeBase64Audio(createSampleWavBase64(), 'audio/wav');
+          voiceStreamRef.current = null;
+          setIsRecordingAudio(false);
+
+          const rawType = recorder.mimeType || mimeType || 'audio/webm';
+          const blob = new Blob(audioChunksRef.current, { type: rawType });
+          if (blob.size < 250) {
+            setStatusNotice('No audio captured. Hold or speak clearly, then tap Stop.');
             return;
           }
+
           const reader = new FileReader();
           reader.onloadend = () => {
             const res = String(reader.result || '');
             const base64 = res.includes(',') ? res.split(',')[1] : res;
-            transcribeBase64Audio(
-              base64 || createSampleWavBase64(),
-              blob.type || 'audio/webm'
-            );
+            if (!base64) {
+              setStatusNotice('Unable to read microphone recording.');
+              return;
+            }
+            void transcribeBase64Audio(base64, normalizeAudioMimeType(blob.type || rawType), true);
           };
           reader.readAsDataURL(blob);
         };
 
         mediaRecorderRef.current = recorder;
-        recorder.start();
+        recorder.start(250);
         setIsRecordingAudio(true);
-        setStatusNotice('Listening... Click Stop when finished speaking.');
-        setTimeout(() => {
-          if (recorder.state === 'recording') {
-            recorder.stop();
-            setIsRecordingAudio(false);
-          }
-        }, 4000);
-      } else {
-        await transcribeBase64Audio(createSampleWavBase64(), 'audio/wav');
+        setStatusNotice('Listening... Speak your question, or click Stop when done.');
+        return;
+      } catch (micErr: any) {
+        const startedFallback = startBrowserSpeechRecognitionFallback();
+        if (startedFallback) return;
+
+        const errName = micErr?.name || '';
+        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          setStatusNotice(
+            'Microphone permission denied. Please allow mic access in your browser to talk to Ultron.'
+          );
+        } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+          setStatusNotice(
+            'No microphone detected on this device. Connect a mic or type your question below.'
+          );
+        } else {
+          setStatusNotice(
+            `Unable to access microphone (${micErr?.message || 'hardware unavailable'}).`
+          );
+        }
+        return;
       }
-    } catch {
-      await transcribeBase64Audio(createSampleWavBase64(), 'audio/wav');
+    }
+
+    const startedFallback = startBrowserSpeechRecognitionFallback();
+    if (!startedFallback) {
+      setStatusNotice(
+        'Microphone capture is not supported in this browser context. Please type your message.'
+      );
     }
   };
 
@@ -789,6 +986,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
     const rawText = textToSend ?? input;
     const text = rawText.trim();
     if (!text || isStreaming) return;
+
+    ultronVoiceEngine.unlockAudio();
+    const shouldAutoSpeakReply = autoSpeakReplies || lastInputWasVoiceRef.current;
+    lastInputWasVoiceRef.current = false;
 
     const effectiveGrounding = overrideGrounding ?? groundingMode;
     if (overrideGrounding) {
@@ -850,25 +1051,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
           : s
       )
     );
-
-    if (currentUser) {
-      const updatedSessionForCloud: ChatSessionItem = {
-        ...activeSession,
-        title: derivedTitle,
-        contextMode: nextContextMode,
-        updatedAt: nowTime,
-        messages: [...activeSession.messages, userMsg],
-      };
-      saveSessionToFirestore(
-        currentUser,
-        updatedSessionForCloud,
-        selectedModel
-      )
-        .then(() =>
-          saveMessageToFirestore(currentUser, currentSessionId, userMsg)
-        )
-        .catch(() => {});
-    }
 
     setInput('');
     setAttachedDemoFile(null);
@@ -940,19 +1122,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
         )
       );
 
-      if (currentUser) {
-        const finalSession: ChatSessionItem = {
-          ...activeSession,
-          title: derivedTitle,
-          contextMode: nextContextMode,
-          updatedAt: replyTime,
-          messages: [...activeSession.messages, userMsg, assistantMsg],
-        };
-        saveMessageToFirestore(currentUser, currentSessionId, assistantMsg)
-          .then(() =>
-            saveSessionToFirestore(currentUser, finalSession, selectedModel)
-          )
-          .catch(() => {});
+      if (shouldAutoSpeakReply) {
+        if (soundEnabled) {
+          void ultronVoiceEngine.speakText(formattedText, {
+            soundEnabled: true,
+            messageId: assistantMsg.id,
+            openProjection: false,
+          });
+        } else {
+          setStatusNotice(
+            'Voice reply ready (Sound is muted in Settings — click Listen on the message to hear it).'
+          );
+        }
       }
     } catch (apiErr: any) {
       const { fullResponse, thinkingSteps } = generateSimpleUltronAnswer(
@@ -1012,23 +1193,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
         )
       );
 
-      if (currentUser) {
-        const finalSession: ChatSessionItem = {
-          ...activeSession,
-          title: derivedTitle,
-          contextMode: nextContextMode,
-          updatedAt: replyTime,
-          messages: [...activeSession.messages, userMsg, assistantMsg],
-        };
-        saveMessageToFirestore(currentUser, currentSessionId, assistantMsg)
-          .then(() =>
-            saveSessionToFirestore(currentUser, finalSession, selectedModel)
-          )
-          .catch(() => {});
-      }
-
       if (apiErr?.message) {
         setStatusNotice(apiErr.message);
+      }
+
+      if (shouldAutoSpeakReply && soundEnabled) {
+        void ultronVoiceEngine.speakText(fullResponse, {
+          soundEnabled: true,
+          messageId: assistantMsg.id,
+          openProjection: false,
+        });
       }
     } finally {
       setIsStreaming(false);
@@ -1246,11 +1420,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
             type="button"
             data-testid="transcribe-audio-btn"
             onClick={handleToggleAudioTranscription}
-            aria-label="Voice input"
-            title="Speak and transcribe audio"
+            aria-label={isRecordingAudio ? 'Stop voice listening' : 'Voice input'}
+            title="Speak and ask Ultron by voice"
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
               isRecordingAudio || isTranscribingAudio
-                ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-400/40'
+                ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-200 border border-rose-300 dark:border-rose-400/40'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06]'
             }`}
           >
@@ -1263,10 +1437,42 @@ export const ChatView: React.FC<ChatViewProps> = ({
             />
             <span>
               {isRecordingAudio
-                ? 'Stop'
+                ? 'Stop listening'
                 : isTranscribingAudio
                 ? 'Transcribing...'
                 : 'Voice'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="auto-speak-toggle"
+            aria-pressed={autoSpeakReplies}
+            onClick={() => {
+              ultronVoiceEngine.unlockAudio();
+              setAutoSpeakReplies((prev) => {
+                const next = !prev;
+                if (!next) {
+                  ultronVoiceEngine.stop();
+                }
+                return next;
+              });
+            }}
+            aria-label={autoSpeakReplies ? 'Disable auto-speak replies' : 'Auto-speak replies'}
+            title="Automatically speak Ultron's replies aloud"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              autoSpeakReplies
+                ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-400/40'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06]'
+            }`}
+          >
+            {autoSpeakReplies ? (
+              <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+            )}
+            <span className="hidden sm:inline">
+              {autoSpeakReplies ? 'Auto-speak on' : 'Auto-speak'}
             </span>
           </button>
         </div>
@@ -1793,14 +1999,51 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             <span>{sharedId === msg.id ? 'Shared' : 'Share'}</span>
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => ultronVoiceEngine.triggerBlobTapSpeech()}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white transition-colors"
-                          >
-                            <Volume2 className="w-3.5 h-3.5" />
-                            <span>Listen</span>
-                          </button>
+                          {(() => {
+                            const isSpeakingThis =
+                              voiceState.isSpeaking &&
+                              voiceState.speakingMessageId === msg.id;
+                            return (
+                              <button
+                                type="button"
+                                data-testid={`listen-message-btn-${msg.id}`}
+                                onClick={() => {
+                                  ultronVoiceEngine.unlockAudio();
+                                  if (isSpeakingThis) {
+                                    ultronVoiceEngine.stop();
+                                  } else {
+                                    void ultronVoiceEngine.speakText(msg.content, {
+                                      soundEnabled: true,
+                                      messageId: msg.id,
+                                      openProjection: false,
+                                    });
+                                  }
+                                }}
+                                aria-label={
+                                  isSpeakingThis
+                                    ? 'Stop speaking response'
+                                    : 'Listen to response'
+                                }
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                                  isSpeakingThis
+                                    ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200'
+                                    : 'hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                              >
+                                {isSpeakingThis ? (
+                                  <>
+                                    <Square className="w-3.5 h-3.5 fill-current" />
+                                    <span>Stop</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Volume2 className="w-3.5 h-3.5" />
+                                    <span>Listen</span>
+                                  </>
+                                )}
+                              </button>
+                            );
+                          })()}
 
                           <div className="inline-flex items-center border-l border-slate-200 dark:border-white/10 pl-1.5 ml-1 gap-0.5">
                             <button

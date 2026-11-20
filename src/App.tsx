@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CinematicOpening } from './components/CinematicOpening';
 import { OnboardingModal } from './components/OnboardingModal';
 import { Navigation, type AppMode } from './components/Navigation';
@@ -24,20 +24,6 @@ import {
   deleteChatSession,
   sanitizeStoredSession,
 } from './utils/ultronLogic';
-import {
-  auth,
-  onAuthStateChanged,
-  signInWithGoogle,
-  signOutUser,
-  syncUserProfileToFirestore,
-  saveSessionToFirestore,
-  saveMessageToFirestore,
-  renameSessionInFirestore,
-  deleteSessionFromFirestore,
-  subscribeToUserSessions,
-  fetchRecentSessionsFromFirestore,
-  type User,
-} from './lib/firebase';
 
 const SESSION_INTRO_KEY = 'ultron_intro_seen_session_v2';
 const STORAGE_KEY = 'ultron_chat_sessions_v1';
@@ -150,45 +136,6 @@ export function takeToken(bucket: { tokens: number; capacity: number }, cost = 1
   },
 ];
 
-function mergeCloudAndLocalSessions(
-  cloudSessions: ChatSessionItem[],
-  localSessions: ChatSessionItem[]
-): ChatSessionItem[] {
-  const localById = new Map(localSessions.map((s) => [s.id, s]));
-  const mergedCloud = cloudSessions.map((cloudSess) => {
-    const localSess = localById.get(cloudSess.id);
-    if (!localSess) return cloudSess;
-
-    const cloudMsgIds = new Set(cloudSess.messages.map((m) => m.id));
-    const unsyncedLocalMsgs = localSess.messages.filter(
-      (m) => !cloudMsgIds.has(m.id)
-    );
-    const mergedMessages =
-      unsyncedLocalMsgs.length > 0
-        ? [...cloudSess.messages, ...unsyncedLocalMsgs]
-        : cloudSess.messages.length >= localSess.messages.length
-        ? cloudSess.messages
-        : localSess.messages;
-
-    return {
-      ...cloudSess,
-      title:
-        localSess.messages.length > cloudSess.messages.length
-          ? localSess.title
-          : cloudSess.title,
-      updatedAt:
-        localSess.messages.length > cloudSess.messages.length
-          ? localSess.updatedAt
-          : cloudSess.updatedAt,
-      messages: mergedMessages,
-    };
-  });
-
-  const cloudIds = new Set(cloudSessions.map((s) => s.id));
-  const remaining = localSessions.filter((s) => !cloudIds.has(s.id));
-  return [...mergedCloud, ...remaining];
-}
-
 export default function App() {
   const [showIntro, setShowIntro] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -228,15 +175,11 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [selectedModel, setSelectedModel] = useState('gemini-4-hydrogen');
   const [bloomIntensity, setBloomIntensity] = useState<number>(0.85);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Sidebar & Session State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isFetchingFirestore, setIsFetchingFirestore] = useState(false);
-  const [lastSyncedLabel, setLastSyncedLabel] = useState<string | null>(null);
   const [chatNotice, setChatNotice] = useState<string | null>(null);
-  const seededFirestoreForUidRef = useRef<string | null>(null);
 
   const [sessions, setSessions] = useState<ChatSessionItem[]>(() => {
     if (typeof window !== 'undefined') {
@@ -318,105 +261,6 @@ export default function App() {
     }
   }, [activeSessionId]);
 
-  // Firebase Auth listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      if (user) {
-        syncUserProfileToFirestore(user, mapThemeTo3D(theme), selectedModel).catch(() => {});
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Firestore real-time sessions sync
-  useEffect(() => {
-    if (!currentUser) {
-      setLastSyncedLabel(null);
-      return;
-    }
-
-    setIsFetchingFirestore(true);
-    const unsub = subscribeToUserSessions(currentUser, (cloudSessions) => {
-      const timeNow = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      setIsFetchingFirestore(false);
-      setLastSyncedLabel(`Synced ${timeNow}`);
-
-      if (cloudSessions.length > 0) {
-        setSessions((prev) => mergeCloudAndLocalSessions(cloudSessions, prev));
-      } else if (seededFirestoreForUidRef.current !== currentUser.uid) {
-        seededFirestoreForUidRef.current = currentUser.uid;
-        setSessions((currentList) => {
-          currentList.forEach((sess) => {
-            saveSessionToFirestore(currentUser, sess, selectedModel)
-              .then(() => {
-                sess.messages.forEach((m) => {
-                  saveMessageToFirestore(currentUser, sess.id, m).catch(() => {});
-                });
-              })
-              .catch(() => {});
-          });
-          return currentList;
-        });
-      }
-    });
-
-    return () => unsub();
-  }, [currentUser, selectedModel]);
-
-  const handleRefreshFirestoreSessions = async () => {
-    setIsFetchingFirestore(true);
-    try {
-      if (currentUser) {
-        const recent = await fetchRecentSessionsFromFirestore(currentUser);
-        const timeNow = new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setLastSyncedLabel(`Fetched ${timeNow}`);
-        if (recent.length > 0) {
-          setSessions((prev) => mergeCloudAndLocalSessions(recent, prev));
-        }
-        setChatNotice(`Synced ${recent.length} recent chat(s) from Firestore.`);
-      } else {
-        const timeNow = new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        setLastSyncedLabel(`Checked ${timeNow}`);
-        setChatNotice(
-          'Showing saved local chats. Sign in with Google to sync across devices.'
-        );
-      }
-    } catch (err: any) {
-      setChatNotice(`Sync notice: ${err?.message || 'Unable to refresh history'}`);
-    } finally {
-      setIsFetchingFirestore(false);
-    }
-  };
-
-  const handleSignIn = async () => {
-    try {
-      const user = await signInWithGoogle();
-      setCurrentUser(user);
-      await syncUserProfileToFirestore(user, mapThemeTo3D(theme), selectedModel);
-    } catch {
-      // Popup closed by user or blocked in preview
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOutUser();
-      setCurrentUser(null);
-    } catch {
-      // Ignore sign out error
-    }
-  };
-
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -449,24 +293,11 @@ export default function App() {
     setCurrentMode('chat');
     setIsMobileSidebarOpen(false);
     setChatNotice(null);
-
-    if (currentUser) {
-      saveSessionToFirestore(currentUser, created, selectedModel)
-        .then(() => {
-          if (created.messages[0]) {
-            return saveMessageToFirestore(currentUser, created.id, created.messages[0]);
-          }
-        })
-        .catch(() => {});
-    }
   };
 
   const handleRenameSession = (sessionId: string, nextTitle: string) => {
     if (!nextTitle.trim()) return;
     setSessions((prev) => renameChatSession(prev, sessionId, nextTitle.trim()));
-    if (currentUser) {
-      renameSessionInFirestore(currentUser, sessionId, nextTitle.trim()).catch(() => {});
-    }
   };
 
   const handleDeleteSession = (sessionId: string) => {
@@ -474,9 +305,6 @@ export default function App() {
     setSessions(updated);
     if (activeSession.id === sessionId) {
       setActiveSessionId(updated[0].id);
-    }
-    if (currentUser) {
-      deleteSessionFromFirestore(currentUser, sessionId).catch(() => {});
     }
   };
 
@@ -558,13 +386,6 @@ export default function App() {
         onRenameSession={handleRenameSession}
         onDeleteSession={handleDeleteSession}
         theme={theme}
-        isFirestoreConnected={Boolean(currentUser)}
-        isFetchingFirestore={isFetchingFirestore}
-        lastSyncedLabel={lastSyncedLabel}
-        onRefreshFirestore={handleRefreshFirestoreSessions}
-        currentUser={currentUser}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
       />
 
       {/* Right Main Workspace */}
@@ -580,8 +401,6 @@ export default function App() {
           onOpenCommand={() => setIsCommandOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           theme={theme}
-          isCloudSynced={Boolean(currentUser)}
-          onSignIn={handleSignIn}
         />
 
         <main className="flex-1 min-h-0 overflow-hidden relative">
@@ -597,9 +416,9 @@ export default function App() {
               theme={theme}
               bloomIntensity={bloomIntensity}
               reducedMotion={reducedMotion}
+              soundEnabled={soundEnabled}
               selectedModel={selectedModel}
               onSelectModel={setSelectedModel}
-              currentUser={currentUser}
               externalNotice={chatNotice}
               onClearExternalNotice={() => setChatNotice(null)}
             />
@@ -645,6 +464,12 @@ export default function App() {
         <VoiceModeView
           onClose={() => setIsVoiceOpen(false)}
           theme={mapThemeTo3D(theme)}
+          soundEnabled={soundEnabled}
+          selectedModel={selectedModel}
+          history={activeSession.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          }))}
         />
       )}
 
@@ -676,11 +501,7 @@ export default function App() {
         onReplayIntro={() => setShowIntro(true)}
         bloomIntensity={bloomIntensity}
         onChangeBloomIntensity={setBloomIntensity}
-        currentUser={currentUser}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
         sessionCount={sessions.length}
-        onRefreshHistory={handleRefreshFirestoreSessions}
         onClearLocalHistory={handleClearLocalSessions}
         onOpenHelp={() => {
           setIsSettingsOpen(false);

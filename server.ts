@@ -19,7 +19,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 
-function getGenAI(): GoogleGenAI {
+function getGenAI(apiVersion?: string): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -29,6 +29,7 @@ function getGenAI(): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
+      ...(apiVersion ? { apiVersion } : {}),
       headers: {
         'User-Agent': 'aistudio-build',
       },
@@ -124,6 +125,7 @@ async function startServer() {
         searchGrounding: 'gemini-4-hydrogen',
         mapsGrounding: 'gemini-4-hydrogen',
         audioTranscription: 'gemini-3.5-transcribe',
+        textToSpeech: 'gemini-3.8-flash-lite-tts',
         liveVoice: 'gemini-3.8-live',
       },
     });
@@ -454,10 +456,15 @@ async function startServer() {
         return;
       }
 
-      const ai = getGenAI();
+      const cleanMime =
+        typeof mimeType === 'string' && mimeType.trim()
+          ? mimeType.split(';')[0].trim().toLowerCase()
+          : 'audio/webm';
+
+      const ai = getGenAI('v1beta');
       const audioPart = {
         inlineData: {
-          mimeType: typeof mimeType === 'string' && mimeType ? mimeType : 'audio/webm',
+          mimeType: cleanMime || 'audio/webm',
           data: audioBase64,
         },
       };
@@ -471,7 +478,7 @@ async function startServer() {
               text:
                 typeof prompt === 'string' && prompt.trim()
                   ? prompt.trim()
-                  : 'Transcribe this audio.',
+                  : 'Transcribe the spoken speech in this audio accurately in plain text. If there is only silence or background noise with no speech, return an empty string.',
             },
           ],
         },
@@ -482,15 +489,99 @@ async function startServer() {
         modelUsed: 'gemini-3.5-transcribe',
       });
     } catch (error: any) {
-      const rawMessage = String(error?.message || error || '');
+      const rawMessage = String(error?.message || error || 'Audio transcription failed');
       const isQuotaError =
         rawMessage.includes('429') || rawMessage.includes('RESOURCE_EXHAUSTED');
       res.status(200).json({
-        text: 'Synthesize the architecture for an autonomous multi-agent workflow with real-time telemetry.',
-        modelUsed: 'gemini-3.5-transcribe (Free-Key Standby)',
-        fallbackNotice: isQuotaError
-          ? 'gemini-3.5-transcribe free-key quota reached; transcribed voice prompt via Ultron standby.'
-          : undefined,
+        text: '',
+        quotaLimited: isQuotaError,
+        error: isQuotaError
+          ? 'Transcription quota reached on current API key.'
+          : rawMessage.slice(0, 140),
+      });
+    }
+  });
+
+  // Text-to-Speech Endpoint (MUST use gemini-3.8-flash-lite-tts -> unary WAV)
+  app.post('/api/gemini/tts', async (req, res) => {
+    try {
+      const {
+        text,
+        voiceName = 'Fenrir',
+        style = 'Calm, clear, authoritative AI assistant speaking naturally',
+      } = req.body ?? {};
+
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        res.status(400).json({ error: 'Text payload is required for speech generation.' });
+        return;
+      }
+
+      const allowedVoices = new Set(['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr']);
+      const selectedVoice = allowedVoices.has(voiceName) ? voiceName : 'Fenrir';
+      const clippedText = text.trim().slice(0, 1500);
+
+      const ai = getGenAI('v1beta');
+      let response: GenerateContentResponse;
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash-lite-tts',
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: clippedText }],
+            },
+          ],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: selectedVoice,
+                },
+              },
+            },
+          },
+        });
+      } catch (cfgErr: any) {
+        const msg = String(cfgErr?.message || '');
+        if (msg.includes('speechConfig') || msg.includes('speechMetadata')) {
+          response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash-lite-tts',
+            contents: clippedText,
+            config: {
+              responseModalities: ['AUDIO'],
+            },
+          });
+        } else {
+          throw cfgErr;
+        }
+      }
+
+      const base64Audio =
+        response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+      if (!base64Audio) {
+        res.status(200).json({
+          audioBase64: null,
+          error: 'No audio stream returned by TTS model.',
+        });
+        return;
+      }
+
+      res.json({
+        audioBase64: base64Audio,
+        mimeType: 'audio/wav',
+        modelUsed: 'gemini-3.8-flash-lite-tts',
+        voice: selectedVoice,
+      });
+    } catch (error: any) {
+      const rawMessage = String(error?.message || error || 'TTS synthesis failed');
+      const isQuotaError =
+        rawMessage.includes('429') || rawMessage.includes('RESOURCE_EXHAUSTED');
+      res.status(200).json({
+        audioBase64: null,
+        quotaLimited: isQuotaError,
+        error: rawMessage.slice(0, 140),
       });
     }
   });
@@ -519,7 +610,7 @@ async function startServer() {
     let sessionPromise: Promise<any> | null = null;
 
     try {
-      const ai = getGenAI();
+      const ai = getGenAI('v1beta');
       sessionPromise = ai.live.connect({
         model: 'gemini-3.8-live',
         config: {
@@ -650,6 +741,10 @@ async function startServer() {
                   data: payload.audio,
                   mimeType: 'audio/pcm;rate=16000',
                 },
+              });
+            } else if (payload.audioStreamEnd) {
+              session.sendRealtimeInput({
+                audioStreamEnd: true,
               });
             } else if (payload.text && typeof payload.text === 'string') {
               session.sendRealtimeInput({

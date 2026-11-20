@@ -13,13 +13,8 @@ import {
   Check,
   RotateCcw,
   Sparkles,
-  Database,
-  RefreshCw,
-  LogOut,
-  LogIn,
   Trash2,
 } from 'lucide-react';
-import type { User } from '../lib/firebase';
 import {
   type UltronTheme,
   type AppearanceMode,
@@ -51,11 +46,7 @@ interface SettingsModalProps {
   onReplayIntro: () => void;
   bloomIntensity: number;
   onChangeBloomIntensity: (value: number) => void;
-  currentUser?: User | null;
-  onSignIn?: () => Promise<void> | void;
-  onSignOut?: () => Promise<void> | void;
   sessionCount?: number;
-  onRefreshHistory?: () => void;
   onClearLocalHistory?: () => void;
   onOpenHelp?: () => void;
   initialTab?: SettingsSectionId;
@@ -77,11 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onReplayIntro,
   bloomIntensity,
   onChangeBloomIntensity,
-  currentUser = null,
-  onSignIn,
-  onSignOut,
   sessionCount = 0,
-  onRefreshHistory,
   onClearLocalHistory,
   onOpenHelp,
   initialTab = 'appearance',
@@ -227,59 +214,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="space-y-5">
                 <div>
                   <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                    Profile &amp; Account
+                    Workspace Profile
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Manage your account and sync preferences across devices.
+                    Your workspace runs locally in your browser with zero external account setup required.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-semibold text-base shrink-0">
-                      {currentUser
-                        ? (currentUser.displayName || currentUser.email || 'U')
-                            .charAt(0)
-                            .toUpperCase()
-                        : 'G'}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                        {currentUser
-                          ? currentUser.displayName || 'Google Account'
-                          : 'Guest Account'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                        {currentUser
-                          ? currentUser.email || 'Signed in with Google'
-                          : 'Sign in with Google to save chats in the cloud'}
-                      </p>
-                    </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-semibold text-base shrink-0">
+                    U
                   </div>
-
-                  {currentUser ? (
-                    onSignOut && (
-                      <button
-                        type="button"
-                        onClick={onSignOut}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors shrink-0"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Sign out</span>
-                      </button>
-                    )
-                  ) : (
-                    onSignIn && (
-                      <button
-                        type="button"
-                        onClick={onSignIn}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
-                      >
-                        <LogIn className="w-3.5 h-3.5" />
-                        <span>Sign in with Google</span>
-                      </button>
-                    )
-                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                      Local Workspace
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      Chats, appearance, and model preferences are saved automatically on this device
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -512,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Chat History
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Manage your saved conversations and cloud synchronization.
+                    Manage your saved conversations stored in this browser.
                   </p>
                 </div>
 
@@ -523,20 +476,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Saved conversations
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {sessionCount} conversation(s) currently stored{' '}
-                        {currentUser ? 'locally and in your cloud account' : 'in this browser'}.
+                        {sessionCount} conversation(s) currently stored in this browser.
                       </p>
                     </div>
-                    {onRefreshHistory && (
-                      <button
-                        type="button"
-                        onClick={onRefreshHistory}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Refresh</span>
-                      </button>
-                    )}
                   </div>
 
                   {onClearLocalHistory && (
@@ -608,82 +550,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
-            {/* 5. INTEGRATIONS (Firebase + Gemini) */}
+            {/* 5. INTEGRATIONS (Gemini AI Engine) */}
             {activeSection === 'integrations' && (
               <div data-testid="settings-integrations-panel" className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                    Connected Apps &amp; Services
+                    Connected Services
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Manage your cloud sync and AI engine connections.
+                    Manage your AI engine connections.
                   </p>
-                </div>
-
-                {/* Firebase Cloud Sync Card */}
-                <div
-                  data-testid="integration-card-firebase"
-                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-400/30 flex items-center justify-center shrink-0">
-                        <Database className="w-4 h-4 text-amber-600 dark:text-amber-300" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-                            Firebase Cloud Sync
-                          </h4>
-                          <span
-                            className={`text-[11px] font-medium px-2 py-0.5 rounded-md border ${
-                              currentUser
-                                ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
-                                : 'bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
-                            }`}
-                          >
-                            {currentUser ? 'Connected' : 'Ready'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Save and sync your chat history across devices.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200/80 dark:border-white/[0.07]">
-                    <span className="text-xs text-slate-600 dark:text-slate-300 truncate">
-                      {currentUser
-                        ? `Signed in as ${currentUser.displayName || currentUser.email}`
-                        : 'Sign in with Google to enable cloud sync.'}
-                    </span>
-                    {currentUser ? (
-                      onSignOut && (
-                        <button
-                          type="button"
-                          data-testid="firebase-auth-action-btn"
-                          onClick={onSignOut}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.06] hover:bg-slate-100 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-xs font-medium transition-colors shrink-0"
-                        >
-                          <LogOut className="w-3.5 h-3.5" />
-                          <span>Sign out</span>
-                        </button>
-                      )
-                    ) : (
-                      onSignIn && (
-                        <button
-                          type="button"
-                          data-testid="firebase-auth-action-btn"
-                          onClick={onSignIn}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
-                        >
-                          <LogIn className="w-3.5 h-3.5" />
-                          <span>Connect Google</span>
-                        </button>
-                      )
-                    )}
-                  </div>
                 </div>
 
                 {/* Gemini Engine Status */}
@@ -741,7 +617,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Your conversations stay yours
                       </p>
                       <p className="mt-1">
-                        When you use Ultron without signing in, chats are stored locally in your browser. When signed in with Google, chats are synced privately to your Firestore workspace.
+                        Your conversations and preferences are stored locally in your browser. Messages sent to Ultron are processed securely via the Gemini API.
                       </p>
                     </div>
                   </div>

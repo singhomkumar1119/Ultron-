@@ -5,7 +5,6 @@ import {
   Plus,
   Settings,
   Search,
-  Database,
   Radio,
 } from 'lucide-react';
 import {
@@ -26,8 +25,6 @@ interface NavigationProps {
   onOpenCommand: () => void;
   onOpenSettings: () => void;
   theme?: UltronTheme;
-  isCloudSynced?: boolean;
-  onSignIn?: () => void;
 }
 
 const MODE_LABELS: Record<AppMode, string> = {
@@ -50,8 +47,6 @@ export const Navigation: React.FC<NavigationProps> = ({
   onOpenCommand,
   onOpenSettings,
   theme = 'indigo',
-  isCloudSynced = false,
-  onSignIn,
 }) => {
   const statusTheme = getSystemStatusThemeConfig(theme);
   const headerTitle =
@@ -94,27 +89,6 @@ export const Navigation: React.FC<NavigationProps> = ({
           >
             {headerTitle}
           </h2>
-
-          {currentMode === 'chat' && (
-            isCloudSynced ? (
-              <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/25 px-2 py-0.5 rounded-lg shrink-0">
-                <Database className="w-3 h-3" />
-                <span>Synced</span>
-              </span>
-            ) : (
-              onSignIn && (
-                <button
-                  type="button"
-                  onClick={onSignIn}
-                  data-testid="google-signin-button"
-                  className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] px-2 py-0.5 rounded-lg transition-colors shrink-0"
-                >
-                  <Database className="w-3 h-3" />
-                  <span>Sync history</span>
-                </button>
-              )
-            )
-          )}
         </div>
       </div>
 

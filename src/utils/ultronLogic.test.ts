@@ -33,6 +33,12 @@ import {
   estimateTokenCount,
   formatCompactTokenCount,
   estimateConversationTokenUsage,
+  stripMarkdownForSpeech,
+  normalizeAudioMimeType,
+  encodePcm16ToBase64,
+  decodePcm16Base64ToFloat32,
+  computeVoiceMeterBars,
+  computeVoiceGlowMetrics,
   type CommandItem,
 } from './ultronLogic';
 
@@ -353,9 +359,9 @@ test('computeTypewriterRevealState reveals text progressively and respects reduc
 });
 
 test('getSettingsTabDefinitions summarizes integration state', () => {
-  const connectedTabs = getSettingsTabDefinitions(true);
-  assert.equal(connectedTabs[1].id, 'integrations');
-  assert.equal(connectedTabs[1].badgeText, 'Connected');
+  const activeTabs = getSettingsTabDefinitions(true);
+  assert.equal(activeTabs[1].id, 'integrations');
+  assert.equal(activeTabs[1].badgeText, 'Active');
 
   const readyTabs = getSettingsTabDefinitions(false);
   assert.equal(readyTabs[1].badgeText, 'Ready');
@@ -457,4 +463,79 @@ test('estimateTokenCount and estimateConversationTokenUsage calculate thread tot
   assert.equal(criticalUsage.statusLevel, 'critical');
   assert.equal(criticalUsage.statusLabel, 'Near Limit');
 });
+
+test('stripMarkdownForSpeech, normalizeAudioMimeType, and PCM16 base64 helpers work cleanly', () => {
+  const md = `## Heading\n\nUse **optical links** with [docs](https://example.com) and:\n\n\`\`\`ts\nconst x = 1;\n\`\`\`\n\n- Low latency`;
+  const spoken = stripMarkdownForSpeech(md);
+  assert.equal(spoken.includes('##'), false);
+  assert.equal(spoken.includes('**'), false);
+  assert.equal(spoken.includes('https://'), false);
+  assert.equal(spoken.includes('optical links'), true);
+  assert.equal(spoken.includes('Code snippet omitted for brevity.'), true);
+
+  assert.equal(normalizeAudioMimeType('audio/webm;codecs=opus'), 'audio/webm');
+  assert.equal(normalizeAudioMimeType('AUDIO/MP4; codecs=mp4a.40.2'), 'audio/mp4');
+  assert.equal(normalizeAudioMimeType(''), 'audio/webm');
+
+  const inputSamples = new Float32Array([0, 0.5, -0.5, 0.99, -1]);
+  const b64 = encodePcm16ToBase64(inputSamples);
+  assert.ok(b64.length > 0);
+  const decoded = decodePcm16Base64ToFloat32(b64);
+  assert.equal(decoded.length, inputSamples.length);
+  for (let i = 0; i < inputSamples.length; i++) {
+    assert.ok(Math.abs(decoded[i] - inputSamples[i]) < 0.001);
+  }
+});
+
+test('computeVoiceMeterBars and computeVoiceGlowMetrics react to real-time audio levels and states', () => {
+  const idleBars = computeVoiceMeterBars({
+    voiceState: 'idle',
+    audioLevel: 0,
+    timeSec: 1.0,
+    barCount: 16,
+  });
+  assert.equal(idleBars.length, 16);
+  assert.ok(idleBars.every((v) => v >= 0.08 && v <= 0.22));
+
+  const quietListen = computeVoiceMeterBars({
+    voiceState: 'listening',
+    audioLevel: 0.05,
+    timeSec: 1.5,
+    barCount: 16,
+  });
+  const loudListen = computeVoiceMeterBars({
+    voiceState: 'listening',
+    audioLevel: 0.85,
+    timeSec: 1.5,
+    barCount: 16,
+  });
+  assert.equal(loudListen.length, 16);
+  // Center bar at loud audio must exceed quiet audio cleanly
+  assert.ok(loudListen[8] > quietListen[8] + 0.25);
+  assert.ok(loudListen.every((v) => v >= 0.08 && v <= 1));
+
+  // Frequency bins shape center and mid bars cleanly when supplied
+  const fftBars = computeVoiceMeterBars({
+    voiceState: 'speaking',
+    audioLevel: 0.2,
+    timeSec: 2.0,
+    barCount: 16,
+    frequencyBins: [220, 200, 180, 140, 100, 60, 40, 20],
+  });
+  assert.ok(fftBars[8] > idleBars[8] + 0.2);
+
+  // Glow metrics scale cleanly with audioLevel & respect theme
+  const idleGlow = computeVoiceGlowMetrics('idle', 0, 'violet');
+  const quietSpeakGlow = computeVoiceGlowMetrics('speaking', 0.1, 'violet');
+  const loudSpeakGlow = computeVoiceGlowMetrics('speaking', 0.9, 'violet');
+  assert.ok(loudSpeakGlow.haloOpacity > quietSpeakGlow.haloOpacity);
+  assert.ok(loudSpeakGlow.haloScale > quietSpeakGlow.haloScale);
+  assert.ok(quietSpeakGlow.haloOpacity > idleGlow.haloOpacity);
+  assert.ok(loudSpeakGlow.barActiveClass.includes('violet'));
+
+  const listenGlow = computeVoiceGlowMetrics('listening', 0.7, 'amber');
+  assert.ok(listenGlow.ringInnerBorderClass.includes('emerald'));
+});
+
+
 

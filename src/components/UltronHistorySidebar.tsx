@@ -18,11 +18,8 @@ import {
   Box,
   FolderKanban,
   Mic,
-  RefreshCw,
   ChevronDown,
   ChevronRight,
-  LogIn,
-  LogOut,
   User as UserIcon,
 } from 'lucide-react';
 import { UltronLogoMark } from './UltronLogoMark';
@@ -33,7 +30,6 @@ import {
   getSystemStatusThemeConfig,
 } from '../utils/ultronLogic';
 import type { AppMode } from './Navigation';
-import type { User } from '../lib/firebase';
 
 interface UltronHistorySidebarProps {
   sessions: ChatSessionItem[];
@@ -51,13 +47,6 @@ interface UltronHistorySidebarProps {
   onRenameSession: (sessionId: string, nextTitle: string) => void;
   onDeleteSession: (sessionId: string) => void;
   theme?: UltronTheme;
-  isFirestoreConnected?: boolean;
-  isFetchingFirestore?: boolean;
-  lastSyncedLabel?: string | null;
-  onRefreshFirestore?: () => void;
-  currentUser?: User | null;
-  onSignIn?: () => void;
-  onSignOut?: () => void;
 }
 
 export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
@@ -76,13 +65,6 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
   onRenameSession,
   onDeleteSession,
   theme = 'indigo',
-  isFirestoreConnected = false,
-  isFetchingFirestore = false,
-  lastSyncedLabel = null,
-  onRefreshFirestore,
-  currentUser = null,
-  onSignIn,
-  onSignOut,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showHistorySearch, setShowHistorySearch] = useState(false);
@@ -301,25 +283,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
           Recent chats
         </span>
-        <div className="flex items-center gap-1" data-testid="firestore-sidebar-status">
-          {onRefreshFirestore && (
-            <button
-              type="button"
-              data-testid="refresh-firestore-sessions-btn"
-              onClick={onRefreshFirestore}
-              aria-label="Refresh chat history"
-              title={
-                isFirestoreConnected
-                  ? `Synced${lastSyncedLabel ? ` (${lastSyncedLabel})` : ''}`
-                  : 'Refresh saved sessions'
-              }
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${isFetchingFirestore ? 'animate-spin text-indigo-500' : ''}`}
-              />
-            </button>
-          )}
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setShowHistorySearch((v) => !v)}
@@ -360,7 +324,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
 
       {/* Recent Chats Scroll List */}
       <div
-        data-testid="firestore-sessions-list"
+        data-testid="chat-sessions-list"
         className="flex-1 overflow-y-auto mt-2 space-y-1 pr-0.5"
       >
         {filteredSessions.length === 0 ? (
@@ -466,65 +430,21 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
         )}
       </div>
 
-      {/* Bottom User Profile & Plan / Cloud Status */}
+      {/* Bottom Workspace Status */}
       <div className="pt-3 mt-2 border-t border-slate-200 dark:border-white/[0.08]">
-        {currentUser ? (
-          <div className="flex items-center justify-between gap-2 px-1.5 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.04] transition-colors">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-300 text-xs font-semibold shrink-0">
-                {(currentUser.displayName || currentUser.email || 'U')
-                  .charAt(0)
-                  .toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                  {currentUser.displayName || currentUser.email?.split('@')[0] || 'Account'}
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                  {isFirestoreConnected ? 'Cloud Sync Active' : 'Standard Plan'}
-                </p>
-              </div>
-            </div>
-            {onSignOut && (
-              <button
-                type="button"
-                onClick={onSignOut}
-                aria-label="Sign out"
-                title="Sign out"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors shrink-0"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+        <div className="flex items-center gap-2.5 px-1.5 py-1.5">
+          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/[0.07] flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
+            <UserIcon className="w-4 h-4" />
           </div>
-        ) : (
-          <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/[0.07] flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
-                <UserIcon className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                  Guest workspace
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                  Local history saved
-                </p>
-              </div>
-            </div>
-            {onSignIn && (
-              <button
-                type="button"
-                data-testid="sidebar-firestore-signin-btn"
-                onClick={onSignIn}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 dark:bg-white/[0.08] hover:bg-slate-800 dark:hover:bg-white/[0.14] text-white text-xs font-medium transition-colors shrink-0"
-              >
-                <LogIn className="w-3 h-3" />
-                <span>Sign in</span>
-              </button>
-            )}
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+              Local workspace
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              Browser history saved
+            </p>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

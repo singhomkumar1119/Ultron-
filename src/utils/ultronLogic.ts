@@ -1255,14 +1255,14 @@ export interface SettingsTabDefinition {
 }
 
 export function getSettingsTabDefinitions(
-  firebaseConnected: boolean
+  aiEngineActive: boolean
 ): SettingsTabDefinition[] {
   return [
     { id: 'preferences', label: 'Preferences' },
     {
       id: 'integrations',
       label: 'Integrations',
-      badgeText: firebaseConnected ? 'Connected' : 'Ready',
+      badgeText: aiEngineActive ? 'Active' : 'Ready',
     },
   ];
 }
@@ -1557,5 +1557,269 @@ export function estimateConversationTokenUsage(params: {
     formattedLimit: formatCompactTokenCount(contextLimit),
     statusLevel,
     statusLabel,
+  };
+}
+
+/**
+ * Strips markdown syntax, fenced code blocks, and URLs so spoken TTS sounds natural.
+ */
+export function stripMarkdownForSpeech(rawText: string, maxChars = 1500): string {
+  if (!rawText) return '';
+  let text = rawText
+    // Replace code blocks with a brief spoken cue
+    .replace(/```[\s\S]*?```/g, ' Code snippet omitted for brevity. ')
+    // Inline code backticks
+    .replace(/`([^`]+)`/g, '$1')
+    // Markdown links [label](url) -> label
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1')
+    // Bare URLs
+    .replace(/https?:\/\/\S+/g, '')
+    // Markdown table separators and pipes
+    .replace(/^\|?[\s:-]+\|[\s|:-]*$/gm, '')
+    .replace(/\|/g, ', ')
+    // Headings & emphasis markers
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    // Bullet prefixes
+    .replace(/^\s*[-*•]\s+/gm, '')
+    // Collapse whitespace
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length > maxChars) {
+    const sliced = text.slice(0, maxChars);
+    const lastBoundary = Math.max(
+      sliced.lastIndexOf('. '),
+      sliced.lastIndexOf('! '),
+      sliced.lastIndexOf('? ')
+    );
+    text =
+      lastBoundary > maxChars * 0.45
+        ? sliced.slice(0, lastBoundary + 1)
+        : `${sliced.trim()}...`;
+  }
+  return text;
+}
+
+/**
+ * Normalizes browser MediaRecorder MIME strings (e.g. "audio/webm;codecs=opus" -> "audio/webm").
+ */
+export function normalizeAudioMimeType(mimeType?: string): string {
+  const raw = (mimeType || '').trim().toLowerCase();
+  if (!raw) return 'audio/webm';
+  const base = raw.split(';')[0].trim();
+  return base || 'audio/webm';
+}
+
+/**
+ * Converts normalized Float32 PCM samples [-1..1] into base64-encoded 16-bit signed LE PCM.
+ */
+export function encodePcm16ToBase64(float32: Float32Array): string {
+  const bytes = new Uint8Array(float32.length * 2);
+  for (let i = 0; i < float32.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, float32[i]));
+    const int16 = clamped < 0 ? Math.round(clamped * 32768) : Math.round(clamped * 32767);
+    bytes[i * 2] = int16 & 0xff;
+    bytes[i * 2 + 1] = (int16 >> 8) & 0xff;
+  }
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...sub);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Converts base64-encoded 16-bit signed LE PCM into normalized Float32Array [-1..1].
+ */
+export function decodePcm16Base64ToFloat32(base64: string): Float32Array {
+  if (!base64) return new Float32Array(0);
+  const binary = atob(base64);
+  const sampleCount = Math.floor(binary.length / 2);
+  const output = new Float32Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    const lo = binary.charCodeAt(i * 2);
+    const hi = binary.charCodeAt(i * 2 + 1);
+    let int16 = lo | (hi << 8);
+    if (int16 >= 0x8000) int16 -= 0x10000;
+    output[i] = int16 / 32768;
+  }
+  return output;
+}
+
+export interface VoiceMeterBarsInput {
+  voiceState: VoiceState;
+  audioLevel: number;
+  timeSec: number;
+  barCount?: number;
+  frequencyBins?: number[];
+}
+
+export interface VoiceGlowMetrics {
+  rgbPrimary: string;
+  rgbSecondary: string;
+  haloOpacity: number;
+  haloScale: number;
+  ringOuterBorderClass: string;
+  ringInnerBorderClass: string;
+  barActiveClass: string;
+  barIdleClass: string;
+  statusAccentClass: string;
+}
+
+/**
+ * Generates normalized [0.08..1] equalizer bar heights driven by real-time audio level,
+ * optional FFT frequency bins, and voice activity state.
+ */
+export function computeVoiceMeterBars({
+  voiceState,
+  audioLevel,
+  timeSec,
+  barCount = 18,
+  frequencyBins,
+}: VoiceMeterBarsInput): number[] {
+  const count = Math.max(4, Math.floor(barCount));
+  const clampedLevel = Math.max(0, Math.min(1, Number.isFinite(audioLevel) ? audioLevel : 0));
+  const t = Number.isFinite(timeSec) ? timeSec : 0;
+  const center = (count - 1) / 2;
+
+  const bars: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const distFromCenter = center > 0 ? Math.abs(i - center) / center : 0;
+    const centerEnvelope = Math.cos(distFromCenter * (Math.PI / 2) * 0.85);
+
+    if (voiceState === 'idle') {
+      const idleRipple = 0.085 + 0.03 * Math.sin(t * 1.8 + i * 0.45) * centerEnvelope;
+      bars.push(Number(Math.max(0.08, Math.min(0.22, idleRipple)).toFixed(4)));
+      continue;
+    }
+
+    if (voiceState === 'thinking') {
+      const wave = 0.5 + 0.5 * Math.sin(t * 5.2 - i * 0.55);
+      const val = 0.14 + wave * 0.34 * (0.45 + 0.55 * centerEnvelope);
+      bars.push(Number(Math.max(0.1, Math.min(0.65, val)).toFixed(4)));
+      continue;
+    }
+
+    // Active 'listening' or 'speaking'
+    let binBoost = 0;
+    if (frequencyBins && frequencyBins.length > 0) {
+      // Mirror spectrum around center for balanced symmetrical visual
+      const symPos = Math.round(distFromCenter * Math.max(0, Math.min(frequencyBins.length - 1, Math.floor(frequencyBins.length * 0.65))));
+      const rawBin = frequencyBins[symPos] ?? 0;
+      binBoost = Math.max(0, Math.min(1, rawBin / 255));
+    }
+
+    const freqMult = voiceState === 'speaking' ? 11.5 : 8.5;
+    const harmonic =
+      0.55 +
+      0.28 * Math.sin(t * freqMult + i * 0.72) +
+      0.17 * Math.cos(t * (freqMult * 1.45) - distFromCenter * 3.8);
+
+    const activeDrive = Math.max(clampedLevel, binBoost * 0.9);
+    const baseline = 0.14 + 0.08 * centerEnvelope;
+    const rawHeight = baseline + activeDrive * 0.82 * centerEnvelope * harmonic;
+    bars.push(Number(Math.max(0.1, Math.min(1, rawHeight)).toFixed(4)));
+  }
+
+  return bars;
+}
+
+/**
+ * Computes theme-matched glow colors, opacity, and halo scale from live audio level.
+ */
+export function computeVoiceGlowMetrics(
+  voiceState: VoiceState,
+  audioLevel: number,
+  theme: 'amber' | 'cyan' | 'violet'
+): VoiceGlowMetrics {
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(audioLevel) ? audioLevel : 0));
+
+  const palette =
+    theme === 'cyan'
+      ? {
+          rgbPrimary: '34, 211, 238',
+          rgbSecondary: '14, 165, 233',
+          ringOuterBorderClass: 'border-cyan-400/25',
+          ringInnerBorderClass: 'border-cyan-300/35',
+          barSpeakingClass: 'bg-gradient-to-t from-cyan-500 via-sky-400 to-cyan-200 shadow-[0_0_10px_rgba(34,211,238,0.45)]',
+          statusAccentClass: 'text-cyan-300',
+        }
+      : theme === 'violet'
+      ? {
+          rgbPrimary: '168, 85, 247',
+          rgbSecondary: '99, 102, 241',
+          ringOuterBorderClass: 'border-violet-400/25',
+          ringInnerBorderClass: 'border-indigo-400/35',
+          barSpeakingClass: 'bg-gradient-to-t from-indigo-500 via-violet-400 to-fuchsia-300 shadow-[0_0_10px_rgba(168,85,247,0.45)]',
+          statusAccentClass: 'text-violet-300',
+        }
+      : {
+          rgbPrimary: '245, 158, 11',
+          rgbSecondary: '234, 88, 12',
+          ringOuterBorderClass: 'border-amber-500/20',
+          ringInnerBorderClass: 'border-amber-400/35',
+          barSpeakingClass: 'bg-gradient-to-t from-amber-500 via-amber-400 to-yellow-200 shadow-[0_0_10px_rgba(245,158,11,0.45)]',
+          statusAccentClass: 'text-amber-300',
+        };
+
+  if (voiceState === 'idle') {
+    return {
+      rgbPrimary: palette.rgbPrimary,
+      rgbSecondary: palette.rgbSecondary,
+      haloOpacity: 0.14,
+      haloScale: 1,
+      ringOuterBorderClass: palette.ringOuterBorderClass,
+      ringInnerBorderClass: palette.ringInnerBorderClass,
+      barActiveClass: palette.barSpeakingClass,
+      barIdleClass: 'bg-slate-600/50',
+      statusAccentClass: palette.statusAccentClass,
+    };
+  }
+
+  if (voiceState === 'thinking') {
+    return {
+      rgbPrimary: palette.rgbPrimary,
+      rgbSecondary: palette.rgbSecondary,
+      haloOpacity: 0.32,
+      haloScale: 1.05,
+      ringOuterBorderClass: palette.ringOuterBorderClass,
+      ringInnerBorderClass: palette.ringInnerBorderClass,
+      barActiveClass: 'bg-gradient-to-t from-indigo-500 to-indigo-300',
+      barIdleClass: 'bg-slate-600/50',
+      statusAccentClass: palette.statusAccentClass,
+    };
+  }
+
+  if (voiceState === 'listening') {
+    return {
+      rgbPrimary: '16, 185, 129', // Crisp Emerald listening aura
+      rgbSecondary: palette.rgbPrimary,
+      haloOpacity: Number((0.28 + clamped * 0.55).toFixed(3)),
+      haloScale: Number((1.03 + clamped * 0.24).toFixed(3)),
+      ringOuterBorderClass: 'border-emerald-400/25',
+      ringInnerBorderClass: 'border-emerald-300/40',
+      barActiveClass:
+        'bg-gradient-to-t from-emerald-500 via-teal-400 to-emerald-200 shadow-[0_0_10px_rgba(16,185,129,0.45)]',
+      barIdleClass: 'bg-slate-600/50',
+      statusAccentClass: 'text-emerald-300',
+    };
+  }
+
+  // Speaking
+  return {
+    rgbPrimary: palette.rgbPrimary,
+    rgbSecondary: palette.rgbSecondary,
+    haloOpacity: Number((0.32 + clamped * 0.56).toFixed(3)),
+    haloScale: Number((1.04 + clamped * 0.26).toFixed(3)),
+    ringOuterBorderClass: palette.ringOuterBorderClass,
+    ringInnerBorderClass: palette.ringInnerBorderClass,
+    barActiveClass: palette.barSpeakingClass,
+    barIdleClass: 'bg-slate-600/50',
+    statusAccentClass: palette.statusAccentClass,
   };
 }

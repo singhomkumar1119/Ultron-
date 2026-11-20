@@ -60,11 +60,15 @@ export const UltronOrbCanvas: React.FC<UltronOrbCanvasProps> = ({
 
   const voiceEnergyRef = useRef(0);
   const isSpeakingRef = useRef(false);
+  const showProjectionRef = useRef(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     return ultronVoiceEngine.subscribe((st) => {
       voiceEnergyRef.current = st.energy;
       isSpeakingRef.current = st.isSpeaking;
+      showProjectionRef.current = st.showProjectionModal;
     });
   }, []);
 
@@ -522,15 +526,16 @@ export const UltronOrbCanvas: React.FC<UltronOrbCanvasProps> = ({
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
-      if (isSpeakingRef.current) {
+      if (isSpeakingRef.current && showProjectionRef.current) {
         animFrameRef.current = requestAnimationFrame(render);
         return;
       }
 
+      const rawState = stateRef.current;
       const activeState: VoiceState =
-        state === 'coding' || state === 'analyzing' ? 'thinking' : state;
+        rawState === 'coding' || rawState === 'analyzing' ? 'thinking' : rawState;
       const liveVoice = voiceEnergyRef.current;
-      const isVoiceActive = isSpeakingRef.current && liveVoice > 0.02;
+      const isVoiceActive = (isSpeakingRef.current || activeState === 'speaking') && liveVoice > 0.02;
 
       const speedMult =
         activeState === 'speaking' || isVoiceActive
@@ -884,7 +889,7 @@ export const UltronOrbCanvas: React.FC<UltronOrbCanvasProps> = ({
       isCancelled = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [size, state, theme]);
+  }, [size, theme]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!interactive || !containerRef.current) return;
@@ -901,8 +906,11 @@ export const UltronOrbCanvas: React.FC<UltronOrbCanvasProps> = ({
   };
 
   const handleBlobClick = () => {
-    ultronVoiceEngine.triggerBlobTapSpeech();
-    if (onClick) onClick();
+    if (onClick) {
+      onClick();
+    } else {
+      ultronVoiceEngine.triggerBlobTapSpeech();
+    }
   };
 
   return (
