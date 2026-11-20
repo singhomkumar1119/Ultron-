@@ -39,6 +39,8 @@ import {
   decodePcm16Base64ToFloat32,
   computeVoiceMeterBars,
   computeVoiceGlowMetrics,
+  computeBackdropParallax,
+  generateBackdropParticles,
   type CommandItem,
 } from './ultronLogic';
 
@@ -536,6 +538,39 @@ test('computeVoiceMeterBars and computeVoiceGlowMetrics react to real-time audio
   const listenGlow = computeVoiceGlowMetrics('listening', 0.7, 'amber');
   assert.ok(listenGlow.ringInnerBorderClass.includes('emerald'));
 });
+
+test('computeBackdropParallax and generateBackdropParticles compute bounded 3D depth layers and respect reducedMotion', () => {
+  const reduced = computeBackdropParallax(0.8, -0.6, true);
+  assert.equal(reduced.faceX, 0);
+  assert.equal(reduced.faceY, 0);
+  assert.equal(reduced.rotateX, 0);
+  assert.equal(reduced.rotateY, 0);
+
+  const active = computeBackdropParallax(1.5, -1.5, false);
+  // Clamped to [-1, 1] input range with progressive depth amplification across planes
+  assert.ok(Math.abs(active.farX) < Math.abs(active.faceX));
+  assert.ok(Math.abs(active.faceX) < Math.abs(active.fogX));
+  assert.ok(Math.abs(active.fogX) < Math.abs(active.particlesX));
+  assert.ok(active.rotateX < 0);
+  assert.ok(active.rotateY < 0);
+
+  const particlesA = generateBackdropParticles(24, 42);
+  const particlesB = generateBackdropParticles(24, 42);
+  assert.equal(particlesA.length, 24);
+  assert.deepEqual(particlesA, particlesB);
+  assert.ok(
+    particlesA.every(
+      (p) =>
+        p.leftPct >= 0 &&
+        p.leftPct <= 100 &&
+        p.topPct >= 0 &&
+        p.topPct <= 100 &&
+        p.sizePx > 0 &&
+        p.durationSec > 0
+    )
+  );
+});
+
 
 
 

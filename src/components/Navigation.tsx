@@ -55,7 +55,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       : MODE_LABELS[currentMode];
 
   return (
-    <header className="sticky top-0 z-30 h-14 w-full bg-[#F8F9FB]/90 dark:bg-[#0B0D12]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.07] px-3 sm:px-5 flex items-center justify-between gap-3 shrink-0 transition-colors">
+    <header className="sticky top-0 z-30 h-14 w-full bg-[#F8F9FB]/90 dark:bg-[#050509]/56 backdrop-blur-xl border-b border-slate-200/80 dark:border-white/[0.08] dark:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.65)] px-3 sm:px-5 flex items-center justify-between gap-3 shrink-0 transition-colors">
       {/* Left: Sidebar toggles + Active Context Title */}
       <div className="flex items-center gap-2.5 min-w-0">
         {/* Mobile Drawer Toggle */}
@@ -99,7 +99,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           onClick={onOpenCommand}
           title="Command Palette (Cmd+K)"
           aria-label="Open quick command search"
-          className="hidden sm:inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-100 dark:hover:bg-white/[0.08] border border-slate-200 dark:border-white/[0.08] text-xs text-slate-500 dark:text-slate-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="hidden sm:inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#15151D]/65 hover:bg-slate-100 dark:hover:bg-[#1E1F2B]/80 border border-slate-200 dark:border-white/[0.1] text-xs text-slate-500 dark:text-slate-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <Search className="w-3.5 h-3.5" />
           <span className="hidden md:inline">Search</span>
@@ -140,7 +140,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             onNewSession?.();
           }}
           aria-label="New chat"
-          className="lg:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+          className="lg:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 dark:bg-gradient-to-r dark:from-[#246BFF] dark:to-[#792BFF] dark:hover:brightness-110 text-white text-xs font-medium transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>New chat</span>
@@ -153,7 +153,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           aria-label="Settings"
           title="Settings"
           data-testid="header-settings-btn"
-          className="p-2 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-100 dark:hover:bg-white/[0.08] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/[0.08] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="p-2 rounded-xl bg-white dark:bg-[#15151D]/65 hover:bg-slate-100 dark:hover:bg-[#1E1F2B]/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/[0.1] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <Settings className="w-4 h-4" />
         </button>

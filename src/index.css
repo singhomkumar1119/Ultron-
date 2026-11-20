@@ -15,13 +15,15 @@
   }
 
   .dark {
-    --ultron-canvas: #0B0D12;
-    --ultron-surface: #12151E;
-    --ultron-surface-subtle: #171B26;
-    --ultron-border: rgba(255, 255, 255, 0.08);
-    --ultron-text: #F3F4F6;
-    --ultron-muted: #9CA3AF;
-    --ultron-accent: #6366F1;
+    --ultron-canvas: #050509;
+    --ultron-surface: #15151D;
+    --ultron-surface-subtle: #1B1C27;
+    --ultron-border: rgba(255, 255, 255, 0.1);
+    --ultron-text: #F8FAFC;
+    --ultron-muted: #94A3B8;
+    --ultron-accent: #FF173D;
+    --ultron-blue: #246BFF;
+    --ultron-violet: #792BFF;
   }
 
   body {
@@ -31,38 +33,74 @@
   }
 }
 
-/* Restrained high-trust surface primitives (Light + Dark) */
+/* Transparent futuristic glassmorphism surface primitives (Light + Dark) */
 .glass-panel {
-  background: rgba(18, 21, 30, 0.88);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.55);
+  background: linear-gradient(
+    160deg,
+    rgba(24, 25, 36, 0.72) 0%,
+    rgba(13, 14, 21, 0.82) 100%
+  );
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 16px 44px -16px rgba(0, 0, 0, 0.78),
+    0 0 28px -18px rgba(36, 107, 255, 0.35),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09);
 }
 
 .glass-panel-subtle {
-  background: rgba(23, 27, 38, 0.72);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(21, 21, 29, 0.62);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .glass-panel-amber {
-  background: rgba(18, 21, 30, 0.9);
-  backdrop-filter: blur(18px);
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  box-shadow: 0 12px 32px -12px rgba(99, 102, 241, 0.18);
+  background: rgba(16, 17, 25, 0.78);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  border: 1px solid rgba(255, 23, 61, 0.28);
+  box-shadow:
+    0 14px 36px -14px rgba(0, 0, 0, 0.75),
+    0 0 24px -10px rgba(255, 23, 61, 0.24);
+}
+
+.scifi-glass-card {
+  background: linear-gradient(
+    160deg,
+    rgba(24, 25, 36, 0.66) 0%,
+    rgba(14, 15, 23, 0.76) 100%
+  );
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 14px 36px -16px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scifi-glass-card:hover {
+  border-color: rgba(255, 23, 61, 0.32);
+  box-shadow:
+    0 18px 42px -16px rgba(0, 0, 0, 0.8),
+    0 0 24px -10px rgba(255, 23, 61, 0.22),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
 }
 
 .glass-button {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.11);
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-button:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 23, 61, 0.35);
 }
 
 .glass-button:active {
@@ -76,7 +114,7 @@ html:not(.dark) body {
 }
 
 html:not(.dark) .glass-panel {
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid #E5E7EB;
@@ -90,8 +128,19 @@ html:not(.dark) .glass-panel-subtle {
 
 html:not(.dark) .glass-panel-amber {
   background: #FFFFFF;
-  border: 1px solid rgba(99, 102, 241, 0.22);
-  box-shadow: 0 10px 28px -10px rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(36, 107, 255, 0.22);
+  box-shadow: 0 10px 28px -10px rgba(36, 107, 255, 0.12);
+}
+
+html:not(.dark) .scifi-glass-card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 10px 28px -12px rgba(15, 23, 42, 0.07);
+}
+
+html:not(.dark) .scifi-glass-card:hover {
+  border-color: rgba(36, 107, 255, 0.36);
+  box-shadow: 0 14px 32px -12px rgba(36, 107, 255, 0.14);
 }
 
 html:not(.dark) .glass-button {
@@ -118,6 +167,108 @@ html:not(.dark) .glass-button:hover {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.45);
+}
+
+/* ============================================================================
+   3D Sci-Fi Atmospheric Backdrop Animations (Lightweight Compositor-Only CSS)
+   ============================================================================ */
+@keyframes ultron-face-breathe-kf {
+  0%, 100% {
+    filter: brightness(0.96) contrast(1.02);
+  }
+  50% {
+    filter: brightness(1.06) contrast(1.07);
+  }
+}
+
+@keyframes ultron-eye-pulse-kf {
+  0%, 100% {
+    opacity: 0.42;
+    transform: translate(-50%, -50%) scale3d(0.95, 0.95, 1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale3d(1.16, 1.12, 1);
+  }
+}
+
+@keyframes ultron-eye-flare-kf {
+  0%, 100% {
+    opacity: 0.18;
+    transform: translate(-50%, -50%) scaleX(0.92);
+  }
+  50% {
+    opacity: 0.48;
+    transform: translate(-50%, -50%) scaleX(1.08);
+  }
+}
+
+@keyframes ultron-fog-drift-a-kf {
+  0%, 100% {
+    transform: translate3d(-2%, 0, 0) scale(1);
+    opacity: 0.36;
+  }
+  50% {
+    transform: translate3d(4%, -3%, 0) scale(1.08);
+    opacity: 0.54;
+  }
+}
+
+@keyframes ultron-fog-drift-b-kf {
+  0%, 100% {
+    transform: translate3d(2%, 0, 0) scale(1.04);
+    opacity: 0.34;
+  }
+  50% {
+    transform: translate3d(-4%, -2.5%, 0) scale(0.98);
+    opacity: 0.5;
+  }
+}
+
+@keyframes ultron-ember-rise-kf {
+  0% {
+    transform: translate3d(0, 18px, 0) scale(0.75);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.72;
+  }
+  80% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate3d(var(--ember-drift-x, 12px), -140px, 0) scale(1.15);
+    opacity: 0;
+  }
+}
+
+.ultron-face-breathe {
+  animation: ultron-face-breathe-kf 7.5s ease-in-out infinite;
+}
+
+.ultron-eye-pulse {
+  animation: ultron-eye-pulse-kf 4.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.ultron-eye-flare {
+  animation: ultron-eye-flare-kf 4.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.ultron-fog-drift-a {
+  animation: ultron-fog-drift-a-kf 18s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.ultron-fog-drift-b {
+  animation: ultron-fog-drift-b-kf 22s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.ultron-ember-rise {
+  animation: ultron-ember-rise-kf 12s linear infinite;
+  will-change: transform, opacity;
 }
 
 /* ============================================================================
@@ -205,6 +356,12 @@ html:not(.dark) .glass-button:hover {
   .ultron-breathe-panel,
   .ultron-breathe-chip,
   .ultron-breathe-emblem,
+  .ultron-face-breathe,
+  .ultron-eye-pulse,
+  .ultron-eye-flare,
+  .ultron-fog-drift-a,
+  .ultron-fog-drift-b,
+  .ultron-ember-rise,
   .ultron-liquid-sheen::after,
   .ultron-glass-reveal-line,
   .ultron-type-caret {
@@ -222,29 +379,30 @@ html:not(.dark) .glass-button:hover {
   overflow: hidden;
   background: linear-gradient(
     155deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(18, 21, 30, 0.94) 55%,
-    rgba(14, 17, 25, 0.98) 100%
+    rgba(28, 30, 44, 0.72) 0%,
+    rgba(16, 17, 25, 0.84) 55%,
+    rgba(10, 11, 17, 0.9) 100%
   );
-  backdrop-filter: blur(22px) saturate(140%);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
-    0 14px 36px -14px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+    0 18px 44px -16px rgba(0, 0, 0, 0.72),
+    0 0 28px -18px rgba(36, 107, 255, 0.25),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .liquid-glass-response-active {
-  border-color: rgba(99, 102, 241, 0.36);
+  border-color: rgba(255, 23, 61, 0.38);
   box-shadow:
-    0 16px 40px -14px rgba(0, 0, 0, 0.58),
-    0 0 24px -8px rgba(99, 102, 241, 0.22),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+    0 18px 46px -14px rgba(0, 0, 0, 0.78),
+    0 0 28px -10px rgba(255, 23, 61, 0.26),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 }
 
 html:not(.dark) .liquid-glass-response {
-  background: #FFFFFF;
+  background: rgba(255, 255, 255, 0.96);
   border-color: #E5E7EB;
   box-shadow:
     0 10px 30px -12px rgba(15, 23, 42, 0.07),
@@ -252,9 +410,9 @@ html:not(.dark) .liquid-glass-response {
 }
 
 html:not(.dark) .liquid-glass-response-active {
-  border-color: rgba(99, 102, 241, 0.38);
+  border-color: rgba(36, 107, 255, 0.38);
   box-shadow:
-    0 14px 34px -12px rgba(99, 102, 241, 0.14),
+    0 14px 34px -12px rgba(36, 107, 255, 0.14),
     inset 0 1px 0 0 rgba(255, 255, 255, 1);
 }
 

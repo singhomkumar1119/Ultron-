@@ -13,6 +13,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { UltronDisplayProjection } from './components/UltronDisplayProjection';
 import { Ultron3DCoreView } from './components/Ultron3DCoreView';
 import { UltronSystemVitalsPanel } from './components/UltronSystemVitalsPanel';
+import { UltronCinematicBackdrop } from './components/UltronCinematicBackdrop';
 import {
   type UltronTheme,
   type AppearanceMode,
@@ -348,9 +349,16 @@ export default function App() {
   return (
     <div
       className={`h-screen w-full overflow-hidden relative flex ${
-        isDarkMode ? 'dark bg-[#0B0D12] text-slate-100' : 'bg-[#F8F9FB] text-slate-900'
-      } antialiased selection:bg-indigo-500/20 selection:text-indigo-700 dark:selection:text-indigo-200 transition-colors duration-200`}
+        isDarkMode ? 'dark bg-[#050509] text-slate-100' : 'bg-[#F8F9FB] text-slate-900'
+      } antialiased selection:bg-indigo-500/20 selection:text-indigo-700 dark:selection:bg-[#FF173D]/25 dark:selection:text-white transition-colors duration-200`}
     >
+      {/* Immersive Multi-Layer 3D Sci-Fi Robotic AI Backdrop */}
+      <UltronCinematicBackdrop
+        isDarkMode={isDarkMode}
+        reducedMotion={reducedMotion}
+        isSidebarOpen={isSidebarOpen}
+      />
+
       {/* Full-Screen 7-Stage Cinematic Opening Sequence */}
       {showIntro && (
         <CinematicOpening

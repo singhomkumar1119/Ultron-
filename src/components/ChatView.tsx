@@ -1341,14 +1341,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
         e.preventDefault();
         handleSend();
       }}
-      className={`w-full rounded-2xl bg-white dark:bg-[#12151E] border transition-all duration-200 p-3 sm:p-3.5 text-left ${
+      className={`w-full rounded-2xl bg-white dark:bg-[#11121B]/72 dark:backdrop-blur-2xl border transition-all duration-200 p-3 sm:p-3.5 text-left ${
         variant === 'centered'
-          ? 'shadow-[0_12px_36px_-14px_rgba(15,23,42,0.12)] dark:shadow-[0_18px_45px_-15px_rgba(0,0,0,0.65)]'
-          : 'shadow-[0_8px_28px_-10px_rgba(15,23,42,0.1)] dark:shadow-[0_12px_36px_-12px_rgba(0,0,0,0.6)]'
+          ? 'shadow-[0_12px_36px_-14px_rgba(15,23,42,0.12)] dark:shadow-[0_24px_60px_-14px_rgba(0,0,0,0.82),inset_0_1px_0_rgba(255,255,255,0.09)]'
+          : 'shadow-[0_8px_28px_-10px_rgba(15,23,42,0.1)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.78),inset_0_1px_0_rgba(255,255,255,0.08)]'
       } ${
         isComposerFocused
-          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-          : 'border-slate-200 dark:border-white/[0.1] hover:border-slate-300 dark:hover:border-white/[0.18]'
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20 dark:border-[#FF173D]/55 dark:ring-[#FF173D]/20 dark:shadow-[0_24px_64px_-14px_rgba(0,0,0,0.88),0_0_32px_-8px_rgba(255,23,61,0.34),inset_0_1px_0_rgba(255,255,255,0.12)]'
+          : 'border-slate-200 dark:border-white/[0.12] hover:border-slate-300 dark:hover:border-white/[0.22]'
       }`}
     >
       {renderComposerControls()}
@@ -1482,7 +1482,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           data-testid="chat-send-btn"
           disabled={!input.trim() || isStreaming}
           aria-label="Send"
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs sm:text-sm shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 dark:bg-gradient-to-r dark:from-[#FF173D] dark:to-[#D61036] dark:hover:brightness-110 dark:shadow-[0_0_22px_-4px_rgba(255,23,61,0.62)] disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs sm:text-sm shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-[#FF173D] cursor-pointer"
         >
           <span>Send</span>
           <ArrowUp className="w-4 h-4" />
@@ -1503,7 +1503,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       ? 'border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300'
       : tokenUsage.statusLevel === 'warning'
       ? 'border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
-      : 'border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#12151E] text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500/40';
+      : 'border-slate-200/90 dark:border-white/[0.1] bg-white dark:bg-[#15151D]/68 dark:backdrop-blur-xl text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-[#FF173D]/40';
 
   const percentDisplay =
     tokenUsage.totalTokens > 0 && tokenUsage.usagePercent < 0.01
@@ -1515,7 +1515,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       {/* ChatView Sub-Header with Real-Time Token Usage & Context Meter */}
       <header
         data-testid="chatview-header"
-        className="relative z-30 px-4 sm:px-6 lg:px-8 pt-2.5 pb-2 border-b border-slate-200/70 dark:border-white/[0.06] bg-[#F8F9FB]/75 dark:bg-[#0B0D12]/75 backdrop-blur-xs shrink-0"
+        className="relative z-30 px-4 sm:px-6 lg:px-8 pt-2.5 pb-2 border-b border-slate-200/70 dark:border-white/[0.07] bg-[#F8F9FB]/75 dark:bg-[#050509]/45 backdrop-blur-md shrink-0"
       >
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 relative">
           <div className="flex items-center gap-2 min-w-0 text-xs text-slate-500 dark:text-slate-400">
@@ -1572,7 +1572,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 data-testid="token-usage-popover"
                 role="dialog"
                 aria-label="Context Window Token Breakdown"
-                className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white dark:bg-[#12151E] border border-slate-200 dark:border-white/10 shadow-xl p-4 z-40 text-xs space-y-3"
+                className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white dark:bg-[#101119]/92 dark:backdrop-blur-2xl border border-slate-200 dark:border-white/[0.12] shadow-xl dark:shadow-[0_24px_60px_-12px_rgba(0,0,0,0.88),0_0_24px_-8px_rgba(36,107,255,0.28)] p-4 z-40 text-xs space-y-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -1679,10 +1679,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
       {/* Main Scrollable Chat Container */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6"
+        data-testid="chat-scroll-container"
+        className="flex-1 overflow-y-auto scroll-smooth px-4 sm:px-6 lg:px-8 py-6"
       >
         {isHomeEmptyState ? (
-          /* Calm, Balanced Empty State / Landing Screen */
+          /* Empty State / Landing Screen ("Meet Ultron") */
           <div className="min-h-full flex flex-col items-center justify-center max-w-3xl mx-auto py-4">
             {/* Interactive 3D Ultron Core + Subtle Toggle */}
             <div className="flex flex-col items-center">
@@ -1760,11 +1761,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </div>
 
               {voiceState.isSpeaking && (
-                <div className="mt-3 px-4 py-2 rounded-full bg-white dark:bg-[#12151E] border border-indigo-200 dark:border-indigo-500/40 shadow-md flex items-center gap-3 max-w-md">
+                <div className="mt-3 px-4 py-2 rounded-full bg-white dark:bg-[#15151D]/82 dark:backdrop-blur-xl border border-indigo-200 dark:border-[#FF173D]/40 shadow-md flex items-center gap-3 max-w-md">
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="w-1 h-3 bg-indigo-500 rounded-full animate-pulse" />
-                    <span className="w-1 h-4 bg-indigo-400 rounded-full animate-pulse [animation-delay:150ms]" />
-                    <span className="w-1 h-2.5 bg-indigo-500 rounded-full animate-pulse [animation-delay:300ms]" />
+                    <span className="w-1 h-3 bg-indigo-500 dark:bg-[#FF173D] rounded-full animate-pulse" />
+                    <span className="w-1 h-4 bg-indigo-400 dark:bg-[#246BFF] rounded-full animate-pulse [animation-delay:150ms]" />
+                    <span className="w-1 h-2.5 bg-indigo-500 dark:bg-[#792BFF] rounded-full animate-pulse [animation-delay:300ms]" />
                   </div>
                   <p className="text-xs text-slate-700 dark:text-slate-200 truncate flex-1">
                     &ldquo;{voiceState.text}&rdquo;
@@ -1785,11 +1786,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <div className="text-center mt-4 mb-6">
               <h1
                 style={{ textWrap: 'balance' }}
-                className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 dark:text-white"
+                className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 dark:text-white dark:drop-shadow-[0_2px_20px_rgba(5,5,9,0.92)]"
               >
                 Meet Ultron
               </h1>
-              <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-2 max-w-xl mx-auto leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-500 dark:text-slate-300/90 mt-2 max-w-xl mx-auto leading-relaxed dark:drop-shadow-[0_1px_12px_rgba(5,5,9,0.9)]">
                 Your intelligent AI assistant for ideas, writing, coding, research, and more.
               </p>
             </div>
@@ -1821,17 +1822,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     type="button"
                     data-testid={`suggestion-chip-${idx}`}
                     onClick={() => handleSend(card.prompt, card.mode)}
-                    className="group p-4 rounded-2xl bg-white dark:bg-[#12151E] border border-slate-200/90 dark:border-white/[0.08] hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:shadow-md dark:hover:bg-[#171B26] text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                    className="group scifi-glass-card p-4 rounded-2xl bg-white dark:bg-[#15151D]/72 border border-slate-200/90 dark:border-white/[0.1] hover:border-indigo-300 dark:hover:border-[#FF173D]/42 hover:shadow-md dark:hover:bg-[#1B1C28]/84 dark:shadow-[0_14px_34px_-14px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.08)] hover:-translate-y-0.5 text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5 mb-1.5">
-                      <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-[#246BFF]/16 dark:border dark:border-[#246BFF]/25 text-indigo-600 dark:text-[#7BA6FF] group-hover:dark:border-[#FF173D]/35 group-hover:dark:text-[#FF5572] flex items-center justify-center shrink-0 group-hover:scale-105 transition-all">
                         <Icon className="w-3.5 h-3.5" />
                       </div>
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white">
                         {card.title}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    <p className="text-xs text-slate-500 dark:text-slate-300/85 leading-relaxed">
                       {card.subtitle}
                     </p>
                   </button>
@@ -2124,7 +2125,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         </div>
                       ) : (
                         <>
-                          <div className="rounded-2xl rounded-tr-sm px-4 py-3 bg-indigo-600 text-white shadow-sm text-[15px] leading-relaxed whitespace-pre-wrap">
+                          <div className="rounded-2xl rounded-tr-sm px-4 py-3 bg-indigo-600 dark:bg-gradient-to-br dark:from-[#246BFF]/90 dark:to-[#6332FF]/90 dark:border dark:border-white/15 dark:shadow-[0_12px_30px_-8px_rgba(36,107,255,0.45)] text-white shadow-sm text-[15px] leading-relaxed whitespace-pre-wrap">
                             {msg.content}
                           </div>
                           <div className="mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -2197,7 +2198,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
       {/* Fixed Bottom Input Bar in Active Conversation */}
       {!isHomeEmptyState && (
-        <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2 bg-gradient-to-t from-[#F8F9FB] via-[#F8F9FB]/95 to-transparent dark:from-[#0B0D12] dark:via-[#0B0D12]/95 shrink-0">
+        <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2 bg-gradient-to-t from-[#F8F9FB] via-[#F8F9FB]/95 to-transparent dark:from-[#050509]/92 dark:via-[#050509]/70 dark:to-transparent shrink-0">
           <div className="max-w-3xl mx-auto">
             {statusNotice && (
               <p

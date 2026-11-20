@@ -1823,3 +1823,118 @@ export function computeVoiceGlowMetrics(
     statusAccentClass: palette.statusAccentClass,
   };
 }
+
+export interface BackdropParallaxState {
+  farX: number;
+  farY: number;
+  faceX: number;
+  faceY: number;
+  rotateX: number;
+  rotateY: number;
+  fogX: number;
+  fogY: number;
+  particlesX: number;
+  particlesY: number;
+}
+
+/**
+ * Computes multi-layer 3D parallax offsets and subtle perspective tilt
+ * from normalized pointer/orientation coordinates in [-1, 1].
+ * Returns zeroed identity values when reducedMotion is active.
+ */
+export function computeBackdropParallax(
+  normX: number,
+  normY: number,
+  reducedMotion = false
+): BackdropParallaxState {
+  if (reducedMotion || !Number.isFinite(normX) || !Number.isFinite(normY)) {
+    return {
+      farX: 0,
+      farY: 0,
+      faceX: 0,
+      faceY: 0,
+      rotateX: 0,
+      rotateY: 0,
+      fogX: 0,
+      fogY: 0,
+      particlesX: 0,
+      particlesY: 0,
+    };
+  }
+
+  const cx = Math.max(-1, Math.min(1, normX));
+  const cy = Math.max(-1, Math.min(1, normY));
+
+  return {
+    farX: Number((-cx * 8).toFixed(2)),
+    farY: Number((-cy * 6).toFixed(2)),
+    faceX: Number((-cx * 16).toFixed(2)),
+    faceY: Number((-cy * 11).toFixed(2)),
+    rotateX: Number((cy * 3.2).toFixed(2)),
+    rotateY: Number((-cx * 4.2).toFixed(2)),
+    fogX: Number((-cx * 26).toFixed(2)),
+    fogY: Number((-cy * 16).toFixed(2)),
+    particlesX: Number((-cx * 34).toFixed(2)),
+    particlesY: Number((-cy * 22).toFixed(2)),
+  };
+}
+
+export interface BackdropParticle {
+  id: number;
+  leftPct: number;
+  topPct: number;
+  sizePx: number;
+  durationSec: number;
+  delaySec: number;
+  driftX: number;
+  opacity: number;
+  color: '#FF173D' | '#246BFF' | '#792BFF' | '#CBD5E1';
+  depth: 'near' | 'mid' | 'far';
+}
+
+/**
+ * Generates deterministic floating sparks, embers, and atmospheric dust particles
+ * distributed across depth layers for the Ultron 3D sci-fi command center backdrop.
+ */
+export function generateBackdropParticles(
+  count = 28,
+  seed = 1337
+): BackdropParticle[] {
+  const safeCount = Math.max(0, Math.min(60, Math.floor(count)));
+  const palette: BackdropParticle['color'][] = [
+    '#FF173D',
+    '#FF173D',
+    '#246BFF',
+    '#792BFF',
+    '#CBD5E1',
+  ];
+  const depths: BackdropParticle['depth'][] = ['far', 'mid', 'near'];
+
+  let state = (seed >>> 0) || 1;
+  const nextRand = () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+
+  const particles: BackdropParticle[] = [];
+  for (let i = 0; i < safeCount; i++) {
+    const depth = depths[i % depths.length];
+    const color = palette[Math.floor(nextRand() * palette.length)];
+    const sizeBase = depth === 'near' ? 2.8 : depth === 'mid' ? 2.0 : 1.3;
+    particles.push({
+      id: i,
+      leftPct: Number((4 + nextRand() * 92).toFixed(2)),
+      topPct: Number((12 + nextRand() * 86).toFixed(2)),
+      sizePx: Number((sizeBase + nextRand() * 1.6).toFixed(2)),
+      durationSec: Number((9 + nextRand() * 13).toFixed(2)),
+      delaySec: Number((-(nextRand() * 14)).toFixed(2)),
+      driftX: Number(((nextRand() - 0.5) * 44).toFixed(1)),
+      opacity: Number((depth === 'near' ? 0.68 : depth === 'mid' ? 0.48 : 0.3).toFixed(2)),
+      color,
+      depth,
+    });
+  }
+
+  return particles;
+}
+

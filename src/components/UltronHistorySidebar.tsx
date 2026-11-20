@@ -161,7 +161,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
           onCreateSession();
           if (isMobile) onToggleMobileOpen(false);
         }}
-        className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-medium shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#12151E] cursor-pointer"
+        className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 dark:bg-gradient-to-r dark:from-[#246BFF] dark:via-[#4F46FF] dark:to-[#792BFF] dark:hover:brightness-110 dark:border dark:border-white/15 dark:shadow-[0_0_24px_-6px_rgba(36,107,255,0.6),inset_0_1px_0_rgba(255,255,255,0.22)] text-white text-sm font-medium shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#050509] cursor-pointer"
       >
         <Plus className="w-4 h-4" />
         <span>New chat</span>
@@ -177,8 +177,8 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
             currentMode === 'chat'
-              ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-indigo-50 dark:bg-[#246BFF]/15 dark:border dark:border-[#246BFF]/30 text-indigo-700 dark:text-white'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <MessageSquare className="w-4 h-4 shrink-0" />
@@ -359,10 +359,10 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
                     if (isMobile) onToggleMobileOpen(false);
                   }
                 }}
-                className={`group rounded-xl px-2.5 py-2 transition-colors cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 ${
+                className={`group rounded-xl px-2.5 py-2 transition-all cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 ${
                   isActive
-                    ? 'bg-slate-200/80 dark:bg-white/[0.09] text-slate-900 dark:text-white'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-slate-200/80 dark:bg-white/[0.08] dark:border dark:border-[#FF173D]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_-8px_rgba(255,23,61,0.5)] text-slate-900 dark:text-white'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white border border-transparent'
                 }`}
               >
                 {isEditing ? (
@@ -380,7 +380,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
                       onChange={(e) => setEditingTitle(e.target.value)}
                       aria-label="Rename conversation"
                       autoFocus
-                      className="flex-1 bg-white dark:bg-[#0B0D12] px-2 py-1 rounded-lg text-xs text-slate-900 dark:text-white border border-indigo-500 focus:outline-none"
+                      className="flex-1 bg-white dark:bg-[#050509] px-2 py-1 rounded-lg text-xs text-slate-900 dark:text-white border border-indigo-500 dark:border-[#FF173D]/60 focus:outline-none"
                     />
                     <button
                       type="submit"
@@ -456,7 +456,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
         aria-label="Conversation History"
         data-testid="conversation-history-sidebar"
         data-collapsed={!isOpen}
-        className={`hidden lg:flex flex-col bg-white dark:bg-[#12151E] border-r border-slate-200 dark:border-white/[0.08] transition-all duration-200 shrink-0 h-full ${
+        className={`hidden lg:flex flex-col relative z-20 bg-white dark:bg-[#0B0C12]/72 dark:backdrop-blur-2xl border-r border-slate-200 dark:border-white/[0.09] dark:shadow-[10px_0_36px_rgba(0,0,0,0.58)] transition-all duration-200 shrink-0 h-full ${
           isOpen ? 'w-72 p-3.5' : 'w-16 py-3.5 px-2 items-center'
         }`}
       >
@@ -484,7 +484,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
                 }}
                 aria-label="New chat"
                 title="New chat"
-                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-sm"
+                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 dark:bg-gradient-to-br dark:from-[#246BFF] dark:to-[#792BFF] dark:hover:brightness-110 text-white transition-all shadow-sm dark:shadow-[0_0_18px_-4px_rgba(36,107,255,0.65)]"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -568,7 +568,7 @@ export const UltronHistorySidebar: React.FC<UltronHistorySidebarProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label="Navigation Drawer"
-            className="w-80 max-w-[85vw] h-full bg-white dark:bg-[#12151E] p-4 border-r border-slate-200 dark:border-white/10 shadow-2xl"
+            className="w-80 max-w-[85vw] h-full bg-white dark:bg-[#0B0C12]/88 dark:backdrop-blur-2xl p-4 border-r border-slate-200 dark:border-white/[0.11] shadow-2xl"
           >
             {renderSidebarBody(true)}
           </div>
